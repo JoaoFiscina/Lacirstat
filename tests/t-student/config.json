@@ -1,0 +1,17 @@
+{
+  "title": "t de Student (Welch)",
+  "subtitle": "Comparação entre duas médias independentes",
+  "description": "Use este módulo quando você quer comparar a média de uma variável quantitativa entre dois grupos independentes. A implementação usa a versão de Welch, mais segura quando os grupos podem ter variâncias diferentes e tamanhos amostrais desiguais.",
+  "note": "Cole duas colunas numéricas da sua planilha: Grupo 1 e Grupo 2. O módulo resume n, média, desvio-padrão, diferença das médias, IC95%, tamanho de efeito e um gráfico comparativo.",
+  "inputGuide": [
+    "Cada coluna representa um grupo independente.",
+    "As linhas são observações; células vazias podem ficar em branco.",
+    "Boa aplicação: tempo de permanência, custo, idade, escore, tempo cirúrgico e outras variáveis contínuas."
+  ],
+  "tips": [
+    "Use quando a pergunta principal for diferença de médias, não diferença de proporções.",
+    "Mesmo com p não significativo, observe a direção da diferença, o IC95% e o tamanho de efeito.",
+    "Se os grupos forem pareados ou antes/depois, este módulo não é o ideal."
+  ],
+  "exampleText": "Grupo A\tGrupo B\n4,8\t6,1\n5,1\t5,8\n4,9\t6,0\n5,0\t5,9\n4,7\t6,2"
+}

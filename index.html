@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bioestatística LACIR</title>
+  <meta name="description" content="Plataforma modular de testes estatísticos para a LACIR" />
+  <link rel="stylesheet" href="./assets/css/styles.css" />
+</head>
+<body>
+  <div class="page-shell">
+    <aside class="sidebar">
+      <div class="sidebar-card brand-card">
+        <div class="brand-badge">LACIR · Pesquisa</div>
+        <h1>Bioestatística LACIR</h1>
+        <p class="brand-text">Calculadora modular para capacitação prática em testes estatísticos, com foco em uso didático e aplicação em estudos com planilhas.</p>
+      </div>
+
+      <div class="sidebar-card nav-card">
+        <div class="section-kicker">Testes disponíveis</div>
+        <nav id="test-nav" class="test-nav">
+          <div class="loading-chip">Carregando testes...</div>
+        </nav>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <section class="hero-card">
+        <div>
+          <div class="hero-kicker">Módulo ativo</div>
+          <h2 id="page-title">Selecione um teste</h2>
+          <p id="page-subtitle">Escolha uma opção no menu lateral.</p>
+        </div>
+        <div class="hero-note" id="hero-note">A plataforma foi estruturada para receber novos testes por módulos independentes.</div>
+      </section>
+
+      <section id="module-root" class="module-root">
+        <div class="empty-state">
+          <h3>Bem-vindo</h3>
+          <p>Selecione um teste no menu para começar.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="./assets/js/app.js"></script>
+</body>
+</html>

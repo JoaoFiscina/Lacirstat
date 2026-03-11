@@ -1,0 +1,37 @@
+{
+  "title": "Correlação de Pearson / Spearman",
+  "subtitle": "Força, direção e visualização gráfica da relação entre duas variáveis",
+  "description": "Use este módulo para avaliar se duas variáveis quantitativas variam em conjunto. O Pearson é a leitura principal quando a nuvem de pontos parece aproximadamente linear; o Spearman funciona como comparação robusta por postos, útil quando há outliers, assimetria ou monotonicidade sem linearidade perfeita.",
+  "note": "Cole duas colunas numéricas da sua planilha — X e Y — ou uma coluna identificadora seguida de X e Y. O módulo mostra pré-visualização, gráfico de dispersão, reta de tendência, coeficientes, IC95% e interpretação automática.",
+  "inputGuide": [
+    "Pearson: melhor quando a relação visual entre os pontos é aproximadamente linear.",
+    "Spearman: útil quando você suspeita de outliers, assimetria ou influência excessiva de alguns pontos.",
+    "Cada linha pode representar estado, município, hospital, ano, paciente ou outro agregado do estudo.",
+    "Correlação mostra associação; não demonstra causalidade."
+  ],
+  "tips": [
+    "Olhe sempre primeiro para o gráfico; ele diz se a correlação faz sentido visualmente.",
+    "Se Pearson e Spearman ficarem muito diferentes, investigue outliers e não linearidade.",
+    "Evite tirar conclusão com n muito pequeno; a instabilidade do coeficiente aumenta bastante."
+  ],
+  "examples": [
+    {
+      "id": "positivo",
+      "label": "Exemplo linear positivo",
+      "description": "Cobertura de seguimento e adesão ao protocolo melhorando juntas.",
+      "text": "UF\tCobertura de seguimento (%)\tAdesão ao protocolo (%)\nBA\t58\t61\nSP\t81\t82\nMG\t73\t75\nPE\t49\t53\nRS\t88\t91\nGO\t67\t69\nCE\t55\t59\nPR\t79\t81"
+    },
+    {
+      "id": "negativo",
+      "label": "Exemplo linear negativo",
+      "description": "Maior atraso associado a menor alta oportuna.",
+      "text": "Hospital\tAtraso médio para procedimento (dias)\tAlta em até 72h (%)\nA\t2\t91\nB\t3\t87\nC\t5\t80\nD\t7\t75\nE\t9\t66\nF\t11\t58\nG\t13\t49\nH\t15\t43"
+    },
+    {
+      "id": "outlier",
+      "label": "Exemplo com outlier",
+      "description": "Mostra como um ponto extremo pode deslocar o Pearson.",
+      "text": "UF\tTaxa de seguimento\tMortalidade hospitalar\nBA\t41\t3,1\nSP\t56\t3,9\nMG\t49\t3,5\nPE\t39\t2,8\nRS\t61\t4,1\nGO\t46\t3,2\nAM\t44\t3,3\nXX\t92\t1,7"
+    }
+  ]
+}

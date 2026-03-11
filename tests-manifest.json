@@ -1,0 +1,20 @@
+[
+  {
+    "id": "t-student",
+    "title": "t de Student",
+    "subtitle": "Comparação entre duas médias",
+    "path": "./tests/t-student/"
+  },
+  {
+    "id": "correlacao",
+    "title": "Pearson / Spearman",
+    "subtitle": "Relação positiva, negativa ou ausente",
+    "path": "./tests/correlacao/"
+  },
+  {
+    "id": "prais-winsten",
+    "title": "Prais-Winsten",
+    "subtitle": "Tendência temporal em séries anuais",
+    "path": "./tests/prais-winsten/"
+  }
+]
