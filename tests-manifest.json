@@ -1,0 +1,8 @@
+[
+  {
+    "id": "t-student",
+    "title": "t de Student",
+    "subtitle": "Comparação entre duas médias",
+    "path": "./tests/t-student/"
+  }
+]
