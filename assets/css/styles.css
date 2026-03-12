@@ -480,3 +480,26 @@ input[type="file"] {
 #c-interpretation p { margin-top: 0; color: var(--text); line-height: 1.7; }
 #c-interpretation ul { margin: 10px 0 0 18px; color: var(--muted); }
 #c-interpretation li + li { margin-top: 6px; }
+
+/* t-Student module refinement */
+.tstudent-module .module-grid { gap: 20px; }
+.tstudent-module .tstudent-header p { max-width: 980px; }
+.tstudent-module .tstudent-cards { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.tstudent-module .didactic-card {
+  border-color: rgba(206, 220, 238, 0.9);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+.tstudent-module .didactic-card p { margin: 0; color: var(--muted); line-height: 1.58; }
+.tstudent-module .surface-card {
+  border-color: rgba(206, 220, 238, 0.95);
+}
+.tstudent-module .t-group-summary .metric-value {
+  font-size: 1.16rem;
+  line-height: 1.2;
+}
+.tstudent-module .chart-card h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tstudent-module .result-card strong { color: #1e293b; }
