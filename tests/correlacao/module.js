@@ -1,37 +1,143 @@
+function splitDelimitedLine(line, delimiter) {
+  if (!line) return [''];
+  const cells = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    const prev = line[i - 1];
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (!inQuotes && char === delimiter) {
+      if (delimiter === ',' && /\d/.test(prev || '') && /\d/.test(next || '')) {
+        current += char;
+      } else {
+        cells.push(current.trim());
+        current = '';
+      }
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current.trim());
+  return cells;
+}
 
-function parseDataset(text, utils, stats) {
-  const parsed = utils.parseDelimitedText(text, 3);
-  const headers = parsed.headers || [];
-  const rows = parsed.rows || [];
-  if (!rows.length) return { headers: ['Variável X', 'Variável Y'], rows: [], labels: [], x: [], y: [] };
+function detectDelimiter(lines) {
+  const sample = lines.slice(0, Math.min(5, lines.length));
+  let tabScore = 0;
+  let semiScore = 0;
+  let commaScore = 0;
+  sample.forEach(line => {
+    tabScore += (line.match(/\t/g) || []).length;
+    semiScore += (line.match(/;/g) || []).length;
+    const chars = [...line];
+    for (let i = 0; i < chars.length; i++) {
+      if (chars[i] !== ',') continue;
+      if (/\d/.test(chars[i - 1] || '') && /\d/.test(chars[i + 1] || '')) continue;
+      commaScore += 1;
+    }
+  });
+  if (tabScore >= semiScore && tabScore >= commaScore && tabScore > 0) return '\t';
+  if (semiScore >= commaScore && semiScore > 0) return ';';
+  return ',';
+}
 
-  const firstRow = rows[0] || [];
-  const hasThirdCol = rows.some(r => String(r[2] ?? '').trim() !== '') || Boolean(headers[2]);
-  const firstColLooksLikeLabel = stats.parseNumber(firstRow[0]) === null && stats.parseNumber(firstRow[1]) !== null;
+function hasHeaderLikely(firstRow, xIndex, yIndex, stats) {
+  return stats.parseNumber(firstRow[xIndex]) === null || stats.parseNumber(firstRow[yIndex]) === null;
+}
+
+function parseDataset(text, stats) {
+  const rawLines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (!rawLines.length) {
+    return {
+      headers: ['X', 'Y'],
+      rows: [],
+      labels: [],
+      x: [],
+      y: [],
+      rawCount: 0,
+      ignoredCount: 0,
+      hasIdentifier: false
+    };
+  }
+
+  const delimiter = detectDelimiter(rawLines);
+  let parsedRows = rawLines.map(line => splitDelimitedLine(line, delimiter));
+  parsedRows = parsedRows.filter(row => row.some(cell => String(cell || '').trim() !== ''));
+
+  const firstRow = parsedRows[0] || [];
+  const hasThreeColumns = parsedRows.some(row => (row.length >= 3 && String(row[2] || '').trim() !== ''));
 
   let labelIndex = null;
   let xIndex = 0;
   let yIndex = 1;
-  if (hasThirdCol || firstColLooksLikeLabel) {
+
+  if (hasThreeColumns) {
+    labelIndex = 0;
+    xIndex = 1;
+    yIndex = 2;
+  } else if (stats.parseNumber(firstRow[0]) === null && stats.parseNumber(firstRow[1]) !== null) {
     labelIndex = 0;
     xIndex = 1;
     yIndex = 2;
   }
 
-  const out = { headers: ['Variável X', 'Variável Y'], rows: [], labels: [], x: [], y: [] };
-  out.headers = headers.length ? [headers[xIndex] || 'Variável X', headers[yIndex] || 'Variável Y'] : ['Variável X', 'Variável Y'];
+  if (labelIndex !== null) {
+    parsedRows = parsedRows.map(row => {
+      const normalized = [...row];
+      while (normalized.length < 3) normalized.push('');
+      return normalized;
+    });
+  } else {
+    parsedRows = parsedRows.map(row => {
+      const normalized = [...row];
+      while (normalized.length < 2) normalized.push('');
+      return normalized;
+    });
+  }
 
-  rows.forEach((row, idx) => {
-    const x = stats.parseNumber(row[xIndex]);
-    const y = stats.parseNumber(row[yIndex]);
-    if (x === null || y === null) return;
-    const label = labelIndex !== null ? String(row[labelIndex] || `Linha ${idx + 1}`) : `Linha ${idx + 1}`;
-    out.labels.push(label);
-    out.x.push(x);
-    out.y.push(y);
-    out.rows.push([label, String(row[xIndex]), String(row[yIndex])]);
+  const headerExists = hasHeaderLikely(parsedRows[0], xIndex, yIndex, stats);
+  let headers = ['X', 'Y'];
+  if (headerExists) {
+    const headerRow = parsedRows.shift() || [];
+    headers = [headerRow[xIndex] || 'X', headerRow[yIndex] || 'Y'];
+  }
+
+  const rows = [];
+  const labels = [];
+  const x = [];
+  const y = [];
+
+  parsedRows.forEach((row, i) => {
+    const xVal = stats.parseNumber(row[xIndex]);
+    const yVal = stats.parseNumber(row[yIndex]);
+    if (xVal === null || yVal === null) return;
+    const label = labelIndex !== null ? String(row[labelIndex] || `Obs ${i + 1}`) : `Obs ${i + 1}`;
+    x.push(xVal);
+    y.push(yVal);
+    labels.push(label);
+    rows.push([label, String(row[xIndex]), String(row[yIndex])]);
   });
-  return out;
+
+  return {
+    headers,
+    rows,
+    labels,
+    x,
+    y,
+    rawCount: parsedRows.length,
+    ignoredCount: Math.max(0, parsedRows.length - x.length),
+    hasIdentifier: labelIndex !== null
+  };
 }
 
 function quantile(sorted, q) {
@@ -39,105 +145,139 @@ function quantile(sorted, q) {
   const pos = (sorted.length - 1) * q;
   const base = Math.floor(pos);
   const rest = pos - base;
-  if (sorted[base + 1] !== undefined) return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
-  return sorted[base];
+  return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
 }
 
 function outlierMask(values) {
-  const s = [...values].sort((a, b) => a - b);
-  const q1 = quantile(s, 0.25);
-  const q3 = quantile(s, 0.75);
+  const sorted = [...values].sort((a, b) => a - b);
+  const q1 = quantile(sorted, 0.25);
+  const q3 = quantile(sorted, 0.75);
   const iqr = q3 - q1;
   const low = q1 - 1.5 * iqr;
   const high = q3 + 1.5 * iqr;
   return values.map(v => v < low || v > high);
 }
 
-function strengthText(coef) {
+function classifyStrength(coef) {
   const abs = Math.abs(coef);
-  if (abs < 0.10) return 'praticamente ausente';
-  if (abs < 0.30) return 'fraca';
-  if (abs < 0.50) return 'leve a moderada';
-  if (abs < 0.70) return 'moderada';
-  if (abs < 0.90) return 'forte';
+  if (abs < 0.1) return 'muito fraca';
+  if (abs < 0.3) return 'fraca';
+  if (abs < 0.5) return 'moderada';
+  if (abs < 0.7) return 'forte';
   return 'muito forte';
 }
 
-function directionText(coef) {
+function classifyDirection(coef) {
+  if (Math.abs(coef) < 0.1) return 'ausente ou muito pequena';
   if (coef > 0) return 'positiva';
-  if (coef < 0) return 'negativa';
-  return 'nula';
+  return 'negativa';
 }
 
-function buildScatterSvg(dataset, pearsonResult, utils) {
-  const width = 860;
+function buildScatterSvg(dataset, pearson, outlierFlags, utils) {
+  const width = 880;
   const height = 460;
-  const margin = { top: 26, right: 24, bottom: 64, left: 84 };
-  const xMin = Math.min(...dataset.x);
-  const xMax = Math.max(...dataset.x);
-  const yMin = Math.min(...dataset.y);
-  const yMax = Math.max(...dataset.y);
-  const xPad = xMin === xMax ? 1 : (xMax - xMin) * 0.08;
-  const yPad = yMin === yMax ? 1 : (yMax - yMin) * 0.10;
-  const minX = xMin - xPad;
-  const maxX = xMax + xPad;
-  const minY = yMin - yPad;
-  const maxY = yMax + yPad;
-  const innerW = width - margin.left - margin.right;
-  const innerH = height - margin.top - margin.bottom;
-  const xToPx = x => margin.left + ((x - minX) / (maxX - minX || 1)) * innerW;
-  const yToPx = y => height - margin.bottom - ((y - minY) / (maxY - minY || 1)) * innerH;
-  const xTicks = Array.from({ length: 5 }, (_, i) => minX + ((maxX - minX) * i) / 4);
-  const yTicks = Array.from({ length: 5 }, (_, i) => minY + ((maxY - minY) * i) / 4);
-  const xOut = outlierMask(dataset.x);
-  const yOut = outlierMask(dataset.y);
-  const lineX1 = minX;
-  const lineX2 = maxX;
-  const lineY1 = pearsonResult.intercept + pearsonResult.slope * lineX1;
-  const lineY2 = pearsonResult.intercept + pearsonResult.slope * lineX2;
+  const margin = { top: 24, right: 24, bottom: 68, left: 82 };
+  const minX = Math.min(...dataset.x);
+  const maxX = Math.max(...dataset.x);
+  const minY = Math.min(...dataset.y);
+  const maxY = Math.max(...dataset.y);
+  const xPad = (maxX - minX || 1) * 0.08;
+  const yPad = (maxY - minY || 1) * 0.1;
+  const px = v => margin.left + ((v - (minX - xPad)) / ((maxX - minX) + xPad * 2 || 1)) * (width - margin.left - margin.right);
+  const py = v => height - margin.bottom - ((v - (minY - yPad)) / ((maxY - minY) + yPad * 2 || 1)) * (height - margin.top - margin.bottom);
 
-  const points = dataset.x.map((x, i) => {
-    const px = xToPx(x);
-    const py = yToPx(dataset.y[i]);
-    const flagged = xOut[i] || yOut[i];
-    const fill = flagged ? '#f97316' : '#2563eb';
-    return `<circle cx="${px.toFixed(2)}" cy="${py.toFixed(2)}" r="6.2" fill="${fill}" fill-opacity="0.92" stroke="#ffffff" stroke-width="2"><title>${utils.escapeHtml(dataset.labels[i])} | ${utils.escapeHtml(dataset.headers[0])}: ${utils.fmtNumber(x, 2)} | ${utils.escapeHtml(dataset.headers[1])}: ${utils.fmtNumber(dataset.y[i], 2)}</title></circle>`;
-  }).join('');
+  const x1 = minX - xPad;
+  const x2 = maxX + xPad;
+  const y1 = pearson.intercept + pearson.slope * x1;
+  const y2 = pearson.intercept + pearson.slope * x2;
 
-  const xGrid = xTicks.map(t => {
-    const px = xToPx(t);
-    return `<g><line x1="${px.toFixed(2)}" y1="${margin.top}" x2="${px.toFixed(2)}" y2="${height - margin.bottom}" stroke="#dbe5f2" stroke-dasharray="4 6" /><text x="${px.toFixed(2)}" y="${height - margin.bottom + 24}" text-anchor="middle" fill="#5b6b84" font-size="12">${utils.fmtNumber(t, 1)}</text></g>`;
-  }).join('');
-  const yGrid = yTicks.map(t => {
-    const py = yToPx(t);
-    return `<g><line x1="${margin.left}" y1="${py.toFixed(2)}" x2="${width - margin.right}" y2="${py.toFixed(2)}" stroke="#dbe5f2" stroke-dasharray="4 6" /><text x="${margin.left - 14}" y="${(py + 4).toFixed(2)}" text-anchor="end" fill="#5b6b84" font-size="12">${utils.fmtNumber(t, 1)}</text></g>`;
+  const points = dataset.x.map((xv, i) => {
+    const yv = dataset.y[i];
+    const isOutlier = outlierFlags[i];
+    const fill = isOutlier ? '#f97316' : '#2563eb';
+    const label = dataset.hasIdentifier ? `<text x="${(px(xv) + 8).toFixed(2)}" y="${(py(yv) - 8).toFixed(2)}" font-size="10" fill="#5b6b84">${utils.escapeHtml(dataset.labels[i]).slice(0, 18)}</text>` : '';
+    return `<g><circle cx="${px(xv).toFixed(2)}" cy="${py(yv).toFixed(2)}" r="5.6" fill="${fill}" stroke="#fff" stroke-width="1.8"><title>${utils.escapeHtml(dataset.labels[i])} — ${utils.escapeHtml(dataset.headers[0])}: ${utils.fmtNumber(xv, 2)} | ${utils.escapeHtml(dataset.headers[1])}: ${utils.fmtNumber(yv, 2)}</title></circle>${label}</g>`;
   }).join('');
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" class="scatter-svg" role="img" aria-label="Gráfico de dispersão com reta de tendência">
-      <rect x="0" y="0" width="${width}" height="${height}" rx="22" fill="#ffffff" />
-      ${xGrid}
-      ${yGrid}
-      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#8da1bc" stroke-width="1.5" />
-      <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#8da1bc" stroke-width="1.5" />
-      <line x1="${xToPx(lineX1).toFixed(2)}" y1="${yToPx(lineY1).toFixed(2)}" x2="${xToPx(lineX2).toFixed(2)}" y2="${yToPx(lineY2).toFixed(2)}" stroke="#0f766e" stroke-width="3.2" stroke-linecap="round" />
+    <svg viewBox="0 0 ${width} ${height}" class="scatter-svg" role="img" aria-label="Dispersão com tendência linear">
+      <rect x="0" y="0" width="${width}" height="${height}" rx="20" fill="#fff"/>
+      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#9cb0ca"/>
+      <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#9cb0ca"/>
+      <line x1="${px(x1).toFixed(2)}" y1="${py(y1).toFixed(2)}" x2="${px(x2).toFixed(2)}" y2="${py(y2).toFixed(2)}" stroke="#0f766e" stroke-width="2.8"/>
       ${points}
-      <text x="${width / 2}" y="${height - 16}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(dataset.headers[0])}</text>
-      <text x="22" y="${height / 2}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700" transform="rotate(-90, 22, ${height / 2})">${utils.escapeHtml(dataset.headers[1])}</text>
+      <text x="${width / 2}" y="${height - 16}" text-anchor="middle" fill="#2c3f57" font-size="13" font-weight="700">${utils.escapeHtml(dataset.headers[0])}</text>
+      <text x="22" y="${height / 2}" text-anchor="middle" fill="#2c3f57" font-size="13" font-weight="700" transform="rotate(-90, 22, ${height / 2})">${utils.escapeHtml(dataset.headers[1])}</text>
     </svg>
   `;
 }
 
-function compareMessage(pearsonResult, spearmanResult, outlierCount) {
-  const gap = Math.abs(Math.abs(pearsonResult.coef) - Math.abs(spearmanResult.coef));
-  if (outlierCount > 0 && gap > 0.12) return 'Há pontos extremos e diferença relevante entre Pearson e Spearman; revise a influência de outliers antes de relatar apenas o Pearson.';
-  if (gap > 0.18) return 'Pearson e Spearman divergem de forma perceptível; isso pode sugerir não linearidade ou concentração de poucos pontos na reta.';
-  return 'Pearson e Spearman ficaram próximos; a direção geral da associação parece estável entre a leitura linear e a leitura por postos.';
+function buildResidualSvg(dataset, pearson, outlierFlags, utils) {
+  const fitted = dataset.x.map(x => pearson.intercept + pearson.slope * x);
+  const residuals = dataset.y.map((y, i) => y - fitted[i]);
+  const width = 880;
+  const height = 360;
+  const margin = { top: 22, right: 24, bottom: 64, left: 82 };
+  const minX = Math.min(...fitted);
+  const maxX = Math.max(...fitted);
+  const minR = Math.min(...residuals, 0);
+  const maxR = Math.max(...residuals, 0);
+  const xPad = (maxX - minX || 1) * 0.08;
+  const yPad = (maxR - minR || 1) * 0.12;
+  const px = v => margin.left + ((v - (minX - xPad)) / ((maxX - minX) + xPad * 2 || 1)) * (width - margin.left - margin.right);
+  const py = v => height - margin.bottom - ((v - (minR - yPad)) / ((maxR - minR) + yPad * 2 || 1)) * (height - margin.top - margin.bottom);
+
+  const dots = residuals.map((res, i) => {
+    const fill = outlierFlags[i] ? '#f97316' : '#475569';
+    return `<circle cx="${px(fitted[i]).toFixed(2)}" cy="${py(res).toFixed(2)}" r="4.8" fill="${fill}"><title>${utils.escapeHtml(dataset.labels[i])} — Ajustado: ${utils.fmtNumber(fitted[i], 2)} | Resíduo: ${utils.fmtSigned(res, 2)}</title></circle>`;
+  }).join('');
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="scatter-svg" role="img" aria-label="Gráfico de resíduos">
+      <rect x="0" y="0" width="${width}" height="${height}" rx="20" fill="#fff"/>
+      <line x1="${margin.left}" y1="${py(0).toFixed(2)}" x2="${width - margin.right}" y2="${py(0).toFixed(2)}" stroke="#0f766e" stroke-dasharray="6 6"/>
+      <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#9cb0ca"/>
+      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#9cb0ca"/>
+      ${dots}
+      <text x="${width / 2}" y="${height - 16}" text-anchor="middle" fill="#2c3f57" font-size="13" font-weight="700">Valores ajustados de ${utils.escapeHtml(dataset.headers[1])}</text>
+      <text x="22" y="${height / 2}" text-anchor="middle" fill="#2c3f57" font-size="13" font-weight="700" transform="rotate(-90, 22, ${height / 2})">Resíduos</text>
+    </svg>
+  `;
 }
 
-function renderEffectBar(value) {
-  const pct = Math.min(100, Math.abs(value) * 100);
-  return `<div class="metric-bar"><span style="width:${pct}%;"></span></div>`;
+function compareMessage(pearson, spearman) {
+  const gap = Math.abs(Math.abs(pearson.coef) - Math.abs(spearman.coef));
+  if (gap > 0.2) return 'Pearson e Spearman divergiram de forma relevante, sugerindo cautela por possível não linearidade ou influência de valores extremos.';
+  if (gap > 0.12) return 'Pearson e Spearman diferiram moderadamente; vale inspecionar o gráfico de resíduos e possíveis outliers.';
+  return 'Pearson e Spearman foram consistentes, indicando uma tendência estável na associação.';
+}
+
+function buildInterpretation(dataset, pearson, spearman, outlierLabels, utils) {
+  const direction = classifyDirection(pearson.coef);
+  const strength = classifyStrength(pearson.coef);
+  const sig = pearson.p < 0.05;
+  const xName = dataset.headers[0];
+  const yName = dataset.headers[1];
+  let text = `Observou-se ${sig ? 'correlação estatisticamente significativa' : 'ausência de evidência estatística robusta de correlação'} entre ${xName} e ${yName} pelo método de Pearson (r = ${utils.fmtSigned(pearson.coef, 3)}; p ${pearson.p < 0.001 ? '< 0,001' : '= ' + utils.fmtP(pearson.p)}). `;
+  text += `A direção foi ${direction} e a força da relação foi classificada como ${strength}. `;
+
+  if (direction === 'positiva') text += `Em termos práticos, quando ${xName} aumenta, ${yName} tende a aumentar.`;
+  else if (direction === 'negativa') text += `Em termos práticos, quando ${xName} aumenta, ${yName} tende a diminuir.`;
+  else text += `Em termos práticos, não se observou tendência linear relevante entre as variáveis.`;
+
+  const gap = Math.abs(Math.abs(pearson.coef) - Math.abs(spearman.coef));
+  if (gap > 0.15) {
+    text += ` Como Pearson (${utils.fmtSigned(pearson.coef, 3)}) e Spearman (${utils.fmtSigned(spearman.coef, 3)}) diferiram de maneira perceptível, recomenda-se interpretar com cautela.`;
+  }
+  if (outlierLabels.length) {
+    text += ` Foram detectados possíveis pontos extremos (${outlierLabels.slice(0, 4).join(', ')}${outlierLabels.length > 4 ? ', ...' : ''}), lembrando que Pearson tende a ser mais sensível a outliers do que Spearman.`;
+  }
+
+  return text;
+}
+
+function metricCard(label, value, note) {
+  return `<div class="metric-card"><div class="metric-label">${label}</div><div class="metric-value">${value}</div><div class="metric-mini">${note}</div></div>`;
 }
 
 export async function renderTestModule(ctx) {
@@ -145,198 +285,171 @@ export async function renderTestModule(ctx) {
   const examples = config.examples || [];
 
   root.innerHTML = `
-    <div class="module-grid">
+    <div class="module-grid correlacao-module">
       <section class="module-header">
-        <div class="chip chip-info">Correlação com gráfico e comparação de métodos</div>
-        <h3>${utils.escapeHtml(config.title)}</h3>
-        <p>${utils.escapeHtml(config.description)}</p>
+        <div class="chip chip-info">Módulo didático avançado</div>
+        <h3>${utils.escapeHtml(config.title || 'Correlação')}</h3>
+        <p>${utils.escapeHtml(config.subtitle || '')}</p>
+        <p>${utils.escapeHtml(config.description || '')}</p>
       </section>
 
-      <section class="callout-grid">
-        <article class="help-card">
-          <h4>Quando usar</h4>
-          <ul>${(config.inputGuide || []).map(item => `<li>${utils.escapeHtml(item)}</li>`).join('')}</ul>
-        </article>
-        <article class="tip-card">
-          <h4>Antes de rodar</h4>
-          <ul>
-            <li>Confirme se as duas variáveis são quantitativas.</li>
-            <li>Verifique se as colunas não foram lidas invertidas.</li>
-            <li>Use o gráfico como filtro inicial de plausibilidade.</li>
-          </ul>
-        </article>
-        <article class="tip-card">
-          <h4>Erros comuns</h4>
-          <ul>
-            <li>Interpretar correlação como causalidade.</li>
-            <li>Relatar apenas p-valor sem direção e magnitude.</li>
-            <li>Ignorar um outlier óbvio no gráfico.</li>
-          </ul>
-        </article>
+      <section class="callout-grid correlacao-cards">
+        ${(config.didacticCards || []).map(card => `
+          <article class="help-card didactic-card">
+            <h4>${utils.escapeHtml(card.title || '')}</h4>
+            <p>${utils.escapeHtml(card.text || '')}</p>
+          </article>
+        `).join('')}
       </section>
 
       <section class="surface-card decorated">
-        <h4>Dados de entrada</h4>
-        <div class="form-grid three">
-          <div>
-            <label for="c-method">Método principal</label>
-            <select id="c-method">
-              <option value="pearson">Pearson</option>
-              <option value="spearman">Spearman</option>
-            </select>
-          </div>
-          <div>
-            <label for="c-example-select">Exemplo rápido</label>
-            <select id="c-example-select">
-              ${examples.map((ex, idx) => `<option value="${utils.escapeHtml(ex.id)}" ${idx === 0 ? 'selected' : ''}>${utils.escapeHtml(ex.label)}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <label for="c-context">Pergunta do estudo</label>
-            <input id="c-context" type="text" value="Existe associação entre as duas variáveis do estudo?" />
-          </div>
-        </div>
-        <div style="margin-top:14px;">
-          <label for="c-paste">Cole 2 ou 3 colunas da planilha</label>
-          <textarea id="c-paste" placeholder="UF\tVariável X\tVariável Y\nBA\t52\t3,1\nSP\t58\t4,7"></textarea>
-          <div class="small-note">Aceita colagem do Excel, CSV, TSV ou texto com 2 colunas (X/Y) ou 3 colunas (ID/X/Y).</div>
-        </div>
+        <h4>Entrada de dados</h4>
+        <div class="small-note">${utils.escapeHtml(config.note || '')}</div>
+        <label for="c-input" style="margin-top:10px;">Cole os dados (tab, vírgula ou ponto e vírgula)</label>
+        <textarea id="c-input" placeholder="ID\tVariável X\tVariável Y\nA\t10\t12\nB\t13\t15"></textarea>
         <div class="actions-row" style="margin-top:14px;">
           <button class="btn-secondary" id="c-load-example">Carregar exemplo</button>
-          <button class="btn-ghost" id="c-template">Baixar modelo CSV</button>
-          <label class="btn-ghost" style="display:inline-flex;align-items:center;gap:8px;">Importar arquivo<input id="c-file" type="file" accept=".csv,.tsv,.txt" style="display:none"></label>
-          <button class="btn" id="c-run">Rodar correlação</button>
+          <button class="btn" id="c-run-analysis">Rodar análise</button>
+          <button class="btn-ghost" id="c-clear">Limpar</button>
+          <select id="c-example-select" aria-label="Escolha um exemplo">
+            ${examples.map((ex, i) => `<option value="${utils.escapeHtml(ex.id)}" ${i === 0 ? 'selected' : ''}>${utils.escapeHtml(ex.label)}</option>`).join('')}
+          </select>
         </div>
       </section>
 
       <section class="surface-card">
         <h4>Pré-visualização dos dados</h4>
-        <div id="c-preview" class="small-note">Nenhum dado carregado ainda.</div>
+        <div id="c-preview" class="small-note">Nenhum dado carregado.</div>
       </section>
 
       <section class="surface-card">
-        <h4>Resultados</h4>
-        <div id="c-status" class="status-bar">O primeiro exemplo já pode ser carregado e rodado imediatamente.</div>
+        <h4>Resultados estatísticos</h4>
+        <div id="c-error"></div>
+        <div id="c-status" class="status-bar">Carregue um exemplo ou cole seus dados para começar.</div>
         <div id="c-metrics" class="metrics-grid" style="margin-top:14px;"></div>
-        <div id="c-chart" class="chart-grid" style="margin-top:14px;"></div>
-        <div id="c-results" class="result-grid" style="margin-top:14px;"></div>
+      </section>
+
+      <section class="surface-card">
+        <h4>Interpretação automática</h4>
+        <div id="c-interpretation" class="result-card"><p class="muted">A interpretação aparecerá aqui após rodar a análise.</p></div>
+        <div id="c-outlier-alert"></div>
+      </section>
+
+      <section class="surface-card">
+        <h4>Gráficos</h4>
+        <div id="c-charts" class="chart-grid"></div>
       </section>
     </div>
   `;
 
-  const pasteEl = root.querySelector('#c-paste');
-  const fileEl = root.querySelector('#c-file');
+  const state = { dataset: null };
+  const inputEl = root.querySelector('#c-input');
+  const selectEl = root.querySelector('#c-example-select');
   const previewEl = root.querySelector('#c-preview');
+  const errorEl = root.querySelector('#c-error');
   const statusEl = root.querySelector('#c-status');
   const metricsEl = root.querySelector('#c-metrics');
-  const chartEl = root.querySelector('#c-chart');
-  const resultsEl = root.querySelector('#c-results');
-  const methodEl = root.querySelector('#c-method');
-  const exampleSelectEl = root.querySelector('#c-example-select');
-  const contextEl = root.querySelector('#c-context');
+  const interpEl = root.querySelector('#c-interpretation');
+  const outlierEl = root.querySelector('#c-outlier-alert');
+  const chartsEl = root.querySelector('#c-charts');
 
-  function refreshPreview() {
-    const dataset = parseDataset(pasteEl.value, utils, stats);
+  function renderPreview() {
+    const dataset = parseDataset(inputEl.value, stats);
+    state.dataset = dataset;
     if (!dataset.rows.length) {
-      previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
+      previewEl.innerHTML = '<div class="small-note">Nenhuma observação válida detectada.</div>';
       return dataset;
     }
-    previewEl.innerHTML = utils.renderPreviewTable(['ID', dataset.headers[0], dataset.headers[1]], dataset.rows);
+    const headerText = `<div class="small-note" style="margin-bottom:10px;"><strong>Colunas detectadas:</strong> ${utils.escapeHtml(dataset.headers[0])} e ${utils.escapeHtml(dataset.headers[1])} · <strong>Observações válidas:</strong> ${dataset.x.length}${dataset.ignoredCount ? ` · <strong>Linhas ignoradas:</strong> ${dataset.ignoredCount}` : ''}</div>`;
+    previewEl.innerHTML = headerText + utils.renderPreviewTable(['ID', dataset.headers[0], dataset.headers[1]], dataset.rows, 10);
     return dataset;
   }
 
-  function loadExample() {
-    const selected = examples.find(ex => ex.id === exampleSelectEl.value) || examples[0];
-    if (!selected) return;
-    pasteEl.value = selected.text;
-    refreshPreview();
+  function resetVisuals() {
+    errorEl.innerHTML = '';
     statusEl.className = 'status-bar';
-    statusEl.textContent = selected.description || 'Exemplo carregado.';
+    statusEl.textContent = 'Carregue um exemplo ou cole seus dados para começar.';
+    metricsEl.innerHTML = '';
+    interpEl.innerHTML = '<p class="muted">A interpretação aparecerá aqui após rodar a análise.</p>';
+    chartsEl.innerHTML = '';
+    outlierEl.innerHTML = '';
+  }
+
+  function clearAll() {
+    inputEl.value = '';
+    previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado.</div>';
+    state.dataset = null;
+    resetVisuals();
+  }
+
+  function loadExample() {
+    const chosen = examples.find(ex => ex.id === selectEl.value) || examples[0];
+    if (!chosen) return;
+    inputEl.value = chosen.text || '';
+    renderPreview();
+    errorEl.innerHTML = '';
+    statusEl.className = 'status-bar';
+    statusEl.textContent = chosen.description || 'Exemplo carregado.';
   }
 
   function runAnalysis() {
-    const dataset = refreshPreview();
+    const dataset = renderPreview();
+    resetVisuals();
+
     if (dataset.x.length < 4) {
-      statusEl.className = 'error-box';
-      statusEl.textContent = 'Use pelo menos 4 pares válidos para uma leitura minimamente estável.';
-      metricsEl.innerHTML = '';
-      chartEl.innerHTML = '';
-      resultsEl.innerHTML = '';
+      errorEl.innerHTML = '<div class="error-box">Forneça ao menos 4 pares válidos para uma análise mais estável.</div>';
       return;
     }
 
-    const pearsonResult = stats.pearson(dataset.x, dataset.y);
-    const spearmanResult = stats.spearman(dataset.x, dataset.y);
-    const chosen = methodEl.value === 'spearman' ? spearmanResult : pearsonResult;
-    const chosenName = methodEl.value === 'spearman' ? 'Spearman' : 'Pearson';
-    const outliers = outlierMask(dataset.x).map((flag, i) => flag || outlierMask(dataset.y)[i]).filter(Boolean).length;
-    const primaryStrength = strengthText(chosen.coef);
-    const primaryDirection = directionText(chosen.coef);
-    const significance = chosen.p < 0.05 ? 'houve evidência estatística de associação' : 'não houve evidência estatística suficiente de associação';
+    const pearson = stats.pearson(dataset.x, dataset.y);
+    const spearman = stats.spearman(dataset.x, dataset.y);
+
+    if (!Number.isFinite(pearson.coef) || !Number.isFinite(spearman.coef)) {
+      errorEl.innerHTML = '<div class="error-box">Não foi possível calcular a correlação. Revise se as colunas possuem variação suficiente.</div>';
+      return;
+    }
+
+    const xOut = outlierMask(dataset.x);
+    const yOut = outlierMask(dataset.y);
+    const outlierFlags = xOut.map((flag, i) => flag || yOut[i]);
+    const outlierLabels = dataset.labels.filter((_, i) => outlierFlags[i]);
 
     statusEl.className = 'success-box';
-    statusEl.textContent = `${chosenName} calculado com ${dataset.x.length} pares válidos. ${significance}.`;
+    statusEl.textContent = `Análise concluída com ${dataset.x.length} observações válidas.`;
 
-    metricsEl.innerHTML = `
-      <div class="metric-card"><div class="metric-label">Coeficiente principal</div><div class="metric-value">${utils.fmtSigned(chosen.coef, 3)}</div><div class="metric-mini">${chosenName} · correlação ${primaryDirection} ${primaryStrength}</div>${renderEffectBar(chosen.coef)}</div>
-      <div class="metric-card"><div class="metric-label">p-valor</div><div class="metric-value">${utils.fmtP(chosen.p)}</div><div class="metric-mini">IC95%: ${utils.fmtNumber(chosen.ci[0], 3)} a ${utils.fmtNumber(chosen.ci[1], 3)}</div></div>
-      <div class="metric-card"><div class="metric-label">Pearson</div><div class="metric-value">${utils.fmtSigned(pearsonResult.coef, 3)}</div><div class="metric-mini">R² = ${utils.fmtNumber(pearsonResult.r2, 3)}</div>${renderEffectBar(pearsonResult.coef)}</div>
-      <div class="metric-card"><div class="metric-label">Spearman</div><div class="metric-value">${utils.fmtSigned(spearmanResult.coef, 3)}</div><div class="metric-mini">comparação robusta por postos</div>${renderEffectBar(spearmanResult.coef)}</div>
-      <div class="metric-card"><div class="metric-label">Pares válidos</div><div class="metric-value">${dataset.x.length}</div><div class="metric-mini">${utils.escapeHtml(dataset.headers[0])} × ${utils.escapeHtml(dataset.headers[1])}</div></div>
-      <div class="metric-card"><div class="metric-label">Possíveis outliers</div><div class="metric-value">${outliers}</div><div class="metric-mini">identificados pelo critério do IQR</div></div>
-    `;
+    metricsEl.innerHTML = [
+      metricCard('n', String(dataset.x.length), 'Total de pares válidos usados nos cálculos.'),
+      metricCard('r de Pearson', utils.fmtSigned(pearson.coef, 3), `p = ${utils.fmtP(pearson.p)} · IC95% ${utils.fmtNumber(pearson.ci[0], 3)} a ${utils.fmtNumber(pearson.ci[1], 3)}`),
+      metricCard('R²', utils.fmtNumber(pearson.r2, 3), 'Proporção da variação linear de Y explicada por X.'),
+      metricCard('rho de Spearman', utils.fmtSigned(spearman.coef, 3), `p = ${utils.fmtP(spearman.p)} · Método por postos.`),
+      metricCard('Direção', classifyDirection(pearson.coef), 'Classificação baseada no sinal e magnitude de r.'),
+      metricCard('Força', classifyStrength(pearson.coef), 'Escala: muito fraca, fraca, moderada, forte, muito forte.')
+    ].join('');
 
-    chartEl.innerHTML = `
+    const interpretation = buildInterpretation(dataset, pearson, spearman, outlierLabels, utils);
+    interpEl.innerHTML = `<p>${utils.escapeHtml(interpretation)}</p><ul><li>${utils.escapeHtml(compareMessage(pearson, spearman))}</li><li>Inclinação linear estimada (Pearson): ${utils.fmtSigned(pearson.slope, 3)} em ${utils.escapeHtml(dataset.headers[1])} para cada 1 unidade em ${utils.escapeHtml(dataset.headers[0])}.</li></ul>`;
+
+    if (outlierLabels.length) {
+      outlierEl.innerHTML = `<div class="status-bar outlier-note"><strong>Atenção a possíveis outliers:</strong> ${utils.escapeHtml(outlierLabels.slice(0, 6).join(', '))}${outlierLabels.length > 6 ? '...' : ''}. Pearson tende a ser mais sensível a pontos extremos que Spearman.</div>`;
+    }
+
+    chartsEl.innerHTML = `
       <article class="chart-card">
-        <h4>Gráfico de dispersão</h4>
-        <div class="chart-wrap">${buildScatterSvg(dataset, pearsonResult, utils)}</div>
-        <div class="chart-legend">
-          <span class="legend-item"><span class="legend-dot" style="background:#2563eb"></span>Pontos regulares</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#f97316"></span>Possíveis outliers</span>
-          <span class="legend-item"><span class="legend-line" style="background:#0f766e"></span>Reta de tendência linear</span>
-        </div>
+        <h4>Gráfico 1 — Dispersão com reta de tendência</h4>
+        <div class="chart-wrap">${buildScatterSvg(dataset, pearson, outlierFlags, utils)}</div>
       </article>
       <article class="chart-card">
-        <h4>Leitura orientada</h4>
-        <div class="dual-list">
-          <div class="dual-list-item"><strong>Direção</strong><p>A associação principal foi <strong>${utils.escapeHtml(primaryDirection)}</strong>.</p></div>
-          <div class="dual-list-item"><strong>Magnitude</strong><p>A intensidade estimada foi <strong>${utils.escapeHtml(primaryStrength)}</strong>.</p></div>
-          <div class="dual-list-item"><strong>Comparação entre métodos</strong><p>${utils.escapeHtml(compareMessage(pearsonResult, spearmanResult, outliers))}</p></div>
-          <div class="dual-list-item"><strong>Reta</strong><p>No Pearson, a inclinação estimada foi ${utils.fmtSigned(pearsonResult.slope, 3)} unidades de Y para cada unidade de X.</p></div>
-        </div>
+        <h4>Gráfico 2 — Resíduos do ajuste linear</h4>
+        <div class="chart-wrap">${buildResidualSvg(dataset, pearson, outlierFlags, utils)}</div>
       </article>
-    `;
-
-    resultsEl.innerHTML = `
-      ${utils.buildInterpretationCard(
-        'Interpretação automática',
-        `${chosenName} mostrou correlação ${primaryDirection} ${primaryStrength}; ${significance}.`,
-        [
-          `Pergunta analisada: ${contextEl.value || 'associação entre duas variáveis'}.`,
-          `Coeficiente ${chosenName}: ${utils.fmtSigned(chosen.coef, 3)}; p ${chosen.p < 0.001 ? '< 0,001' : '= ' + utils.fmtP(chosen.p)}.`,
-          `Relate junto o gráfico, a direção, a magnitude e a comparação entre Pearson e Spearman.`
-        ]
-      )}
-      <div class="result-card">
-        <h4>Dica para relatar</h4>
-        <p>Você pode escrever assim: “Observou-se correlação ${utils.escapeHtml(primaryDirection)} entre ${utils.escapeHtml(dataset.headers[0])} e ${utils.escapeHtml(dataset.headers[1])}, de magnitude ${utils.escapeHtml(primaryStrength)} (${chosenName} = ${utils.fmtSigned(chosen.coef, 3)}; IC95% ${utils.fmtNumber(chosen.ci[0], 3)} a ${utils.fmtNumber(chosen.ci[1], 3)}; p ${chosen.p < 0.001 ? '< 0,001' : '= ' + utils.fmtP(chosen.p)}).”</p>
-      </div>
     `;
   }
 
   root.querySelector('#c-load-example').addEventListener('click', loadExample);
-  root.querySelector('#c-template').addEventListener('click', () => {
-    utils.downloadText('modelo_correlacao.csv', 'ID;Variavel X;Variavel Y\nA;10;12\nB;13;15\nC;17;20\n', 'text/csv;charset=utf-8');
-  });
-  fileEl.addEventListener('change', async event => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    pasteEl.value = await utils.readFileText(file);
-    refreshPreview();
-  });
-  pasteEl.addEventListener('input', refreshPreview);
-  root.querySelector('#c-run').addEventListener('click', runAnalysis);
-  exampleSelectEl.addEventListener('change', loadExample);
+  root.querySelector('#c-run-analysis').addEventListener('click', runAnalysis);
+  root.querySelector('#c-clear').addEventListener('click', clearAll);
+  inputEl.addEventListener('input', renderPreview);
+  selectEl.addEventListener('change', loadExample);
 
   if (examples[0]) {
     loadExample();
