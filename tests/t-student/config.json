@@ -1,17 +1,29 @@
 {
-  "title": "t de Student (Welch)",
-  "subtitle": "Comparação entre duas médias independentes",
-  "description": "Use este módulo quando você quer comparar a média de uma variável quantitativa entre dois grupos independentes. A implementação usa a versão de Welch, mais segura quando os grupos podem ter variâncias diferentes e tamanhos amostrais desiguais.",
-  "note": "Cole duas colunas numéricas da sua planilha: Grupo 1 e Grupo 2. O módulo resume n, média, desvio-padrão, diferença das médias, IC95%, tamanho de efeito e um gráfico comparativo.",
-  "inputGuide": [
-    "Cada coluna representa um grupo independente.",
-    "As linhas são observações; células vazias podem ficar em branco.",
-    "Boa aplicação: tempo de permanência, custo, idade, escore, tempo cirúrgico e outras variáveis contínuas."
+  "title": "t de Student para grupos independentes",
+  "subtitle": "Comparação didática entre duas médias",
+  "description": "Este módulo aplica o teste t de Welch para comparar duas médias independentes com interpretação automática, resumo dos grupos e visualização clara da dispersão dos dados.",
+  "defaultQuestion": "As médias dos dois grupos são diferentes?",
+  "didacticCards": [
+    {
+      "title": "O que este teste faz",
+      "text": "Compara as médias de dois grupos independentes e estima se a diferença observada pode ser atribuída ao acaso."
+    },
+    {
+      "title": "Quando usar t de Student",
+      "text": "Use quando há uma variável numérica e dois grupos independentes, como tratamento versus controle ou turma A versus turma B."
+    },
+    {
+      "title": "Independentes x pareados",
+      "text": "Aqui os grupos são independentes. Para antes/depois das mesmas pessoas, o teste adequado é t pareado."
+    },
+    {
+      "title": "Cuidados antes de interpretar",
+      "text": "Cheque amostra mínima por grupo, possíveis outliers e coerência clínica da diferença, não apenas o p-valor."
+    },
+    {
+      "title": "O que o p-valor não diz sozinho",
+      "text": "O p-valor não informa magnitude nem relevância prática. Sempre leia junto com IC95% e tamanho de efeito."
+    }
   ],
-  "tips": [
-    "Use quando a pergunta principal for diferença de médias, não diferença de proporções.",
-    "Mesmo com p não significativo, observe a direção da diferença, o IC95% e o tamanho de efeito.",
-    "Se os grupos forem pareados ou antes/depois, este módulo não é o ideal."
-  ],
-  "exampleText": "Grupo A\tGrupo B\n4,8\t6,1\n5,1\t5,8\n4,9\t6,0\n5,0\t5,9\n4,7\t6,2"
+  "exampleText": "Grupo A\tGrupo B\n4,8\t6,1\n5,1\t5,8\n4,9\t6,0\n5,0\t5,9\n4,7\t6,2\n5,2\t5,7\n4,6\t6,3"
 }
