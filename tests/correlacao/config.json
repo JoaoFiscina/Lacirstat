@@ -1,37 +1,48 @@
 {
   "title": "Correlação de Pearson / Spearman",
-  "subtitle": "Força, direção e visualização gráfica da relação entre duas variáveis",
-  "description": "Use este módulo para avaliar se duas variáveis quantitativas variam em conjunto. O Pearson é a leitura principal quando a nuvem de pontos parece aproximadamente linear; o Spearman funciona como comparação robusta por postos, útil quando há outliers, assimetria ou monotonicidade sem linearidade perfeita.",
-  "note": "Cole duas colunas numéricas da sua planilha — X e Y — ou uma coluna identificadora seguida de X e Y. O módulo mostra pré-visualização, gráfico de dispersão, reta de tendência, coeficientes, IC95% e interpretação automática.",
-  "inputGuide": [
-    "Pearson: melhor quando a relação visual entre os pontos é aproximadamente linear.",
-    "Spearman: útil quando você suspeita de outliers, assimetria ou influência excessiva de alguns pontos.",
-    "Cada linha pode representar estado, município, hospital, ano, paciente ou outro agregado do estudo.",
-    "Correlação mostra associação; não demonstra causalidade."
-  ],
-  "tips": [
-    "Olhe sempre primeiro para o gráfico; ele diz se a correlação faz sentido visualmente.",
-    "Se Pearson e Spearman ficarem muito diferentes, investigue outliers e não linearidade.",
-    "Evite tirar conclusão com n muito pequeno; a instabilidade do coeficiente aumenta bastante."
+  "subtitle": "Análise didática da força e direção da associação entre duas variáveis",
+  "description": "Cole seus dados e compare Pearson e Spearman em uma leitura visual e estatística completa, com interpretação automática em português usando os nomes reais das variáveis detectadas.",
+  "note": "Aceita 2 colunas numéricas (X e Y) ou 3 colunas (identificador + X + Y), com delimitador tab, vírgula ou ponto e vírgula e cabeçalho opcional.",
+  "didacticCards": [
+    {
+      "title": "O que este teste avalia",
+      "text": "Mede se duas variáveis quantitativas variam juntas, indicando direção (positiva/negativa) e magnitude da associação."
+    },
+    {
+      "title": "Quando usar Pearson",
+      "text": "Quando a nuvem de pontos sugere relação aproximadamente linear e sem influência dominante de pontos extremos."
+    },
+    {
+      "title": "Quando usar Spearman",
+      "text": "Quando há assimetria, possível não linearidade monotônica ou sensibilidade a outliers na análise linear."
+    },
+    {
+      "title": "O que olhar antes de interpretar",
+      "text": "Verifique o gráfico de dispersão, a presença de outliers, o tamanho amostral e se os dados fazem sentido no contexto clínico ou acadêmico."
+    },
+    {
+      "title": "Erro comum",
+      "text": "Correlação não implica causalidade. Mesmo uma associação forte não prova que uma variável causa a outra."
+    }
   ],
   "examples": [
     {
       "id": "positivo",
-      "label": "Exemplo linear positivo",
-      "description": "Cobertura de seguimento e adesão ao protocolo melhorando juntas.",
+      "label": "Exemplo positivo (tab)",
+      "description": "Cobertura de seguimento e adesão ao protocolo aumentando juntas.",
       "text": "UF\tCobertura de seguimento (%)\tAdesão ao protocolo (%)\nBA\t58\t61\nSP\t81\t82\nMG\t73\t75\nPE\t49\t53\nRS\t88\t91\nGO\t67\t69\nCE\t55\t59\nPR\t79\t81"
     },
     {
       "id": "negativo",
-      "label": "Exemplo linear negativo",
+      "label": "Exemplo negativo (ponto e vírgula)",
       "description": "Maior atraso associado a menor alta oportuna.",
-      "text": "Hospital\tAtraso médio para procedimento (dias)\tAlta em até 72h (%)\nA\t2\t91\nB\t3\t87\nC\t5\t80\nD\t7\t75\nE\t9\t66\nF\t11\t58\nG\t13\t49\nH\t15\t43"
+      "text": "Hospital;Atraso médio para procedimento (dias);Alta em até 72h (%)\nA;2;91\nB;3;87\nC;5;80\nD;7;75\nE;9;66\nF;11;58\nG;13;49\nH;15;43"
     },
     {
       "id": "outlier",
-      "label": "Exemplo com outlier",
-      "description": "Mostra como um ponto extremo pode deslocar o Pearson.",
-      "text": "UF\tTaxa de seguimento\tMortalidade hospitalar\nBA\t41\t3,1\nSP\t56\t3,9\nMG\t49\t3,5\nPE\t39\t2,8\nRS\t61\t4,1\nGO\t46\t3,2\nAM\t44\t3,3\nXX\t92\t1,7"
+      "label": "Exemplo com outlier (vírgula decimal)",
+      "description": "Mostra como um ponto extremo pode deslocar o Pearson em relação ao Spearman.",
+      "text": "UF;Taxa de seguimento;Mortalidade hospitalar\nBA;41;3,1\nSP;56;3,9\nMG;49;3,5\nPE;39;2,8\nRS;61;4,1\nGO;46;3,2\nAM;44;3,3\nXX;92;1,7"
     }
   ]
 }
