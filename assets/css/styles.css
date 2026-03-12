@@ -503,3 +503,36 @@ input[type="file"] {
   gap: 8px;
 }
 .tstudent-module .result-card strong { color: #1e293b; }
+
+/* Prais-Winsten module refinement */
+.prais-module .module-grid { gap: 20px; }
+.prais-module .module-header p { max-width: 980px; }
+.prais-module .prais-cards {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.prais-module .didactic-card {
+  border-color: rgba(206, 220, 238, 0.95);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+.prais-module .didactic-card h4 {
+  font-size: 1rem;
+  margin-bottom: 8px;
+}
+.prais-module .didactic-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.58;
+}
+.prais-module .mini-card {
+  border-color: rgba(216, 226, 240, 0.95);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+}
+.prais-module .mini-card p {
+  margin: 6px 0 0;
+  font-weight: 700;
+  color: #23415c;
+}
+.prais-module .result-card p {
+  color: #2f4a63;
+}

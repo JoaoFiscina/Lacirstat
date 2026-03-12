@@ -1,17 +1,41 @@
 {
   "title": "Prais-Winsten",
-  "subtitle": "Análise de tendência temporal com autocorrelação",
-  "description": "Use este módulo quando você quer avaliar se um indicador ao longo do tempo apresenta tendência crescente, decrescente ou estacionária. O modelo de Prais-Winsten é útil para séries anuais ou mensais e corrige autocorrelação serial de primeira ordem.",
-  "note": "Cole duas colunas numéricas: tempo e indicador. O módulo entrega APC, IC95%, p-valor, autocorrelação estimada e gráfico da série com tendência ajustada.",
-  "inputGuide": [
-    "A primeira coluna deve ser a variável temporal, como ano ou mês codificado numericamente.",
-    "A segunda coluna deve ser o valor do indicador ou taxa, sempre positivo.",
-    "Prefira pelo menos 5 pontos temporais; séries muito curtas ficam instáveis."
+  "subtitle": "Análise de tendência temporal com autocorrelação serial (AR1)",
+  "description": "Módulo didático para avaliar tendência temporal em indicadores agregados. A análise classifica a série como crescente, decrescente ou estacionária, com ajuste para autocorrelação de primeira ordem.",
+  "note": "Cole duas colunas (tempo e indicador), rode a análise e use a interpretação automática como base para o relatório.",
+  "didacticCards": [
+    {
+      "title": "O que o modelo avalia",
+      "text": "Avalia se há tendência temporal no indicador, estimando direção, magnitude e incerteza da mudança ao longo dos pontos observados."
+    },
+    {
+      "title": "Quando usar Prais-Winsten",
+      "text": "Use em séries temporais agregadas (anuais, mensais ou similares) quando observações consecutivas podem estar correlacionadas."
+    },
+    {
+      "title": "Como interpretar a tendência",
+      "text": "Crescente indica aumento ao longo do tempo, decrescente indica queda, e estacionária sugere ausência de mudança consistente."
+    },
+    {
+      "title": "Por que autocorrelação importa",
+      "text": "Ignorar autocorrelação pode subestimar erros-padrão e gerar conclusões excessivamente otimistas sobre significância."
+    },
+    {
+      "title": "Cuidado com séries curtas",
+      "text": "Com poucos pontos, a estimativa fica instável e a análise pode não detectar mudanças pequenas, mesmo quando elas existem."
+    }
   ],
-  "tips": [
-    "Use taxas padronizadas ou indicadores comparáveis entre períodos sempre que possível.",
-    "Olhe a série bruta no gráfico antes de se prender ao p-valor.",
-    "Uma APC pequena porém consistente pode ser epidemiologicamente relevante."
-  ],
-  "exampleText": "Ano\tTaxa\n2015\t6,7\n2016\t7,0\n2017\t7,4\n2018\t7,9\n2019\t8,3\n2020\t7,9\n2021\t8,4\n2022\t8,8\n2023\t9,3\n2024\t9,6"
+  "exampleHeaders": ["Ano", "Taxa"],
+  "exampleRows": [
+    [2015, "6,7"],
+    [2016, "7,0"],
+    [2017, "7,4"],
+    [2018, "7,9"],
+    [2019, "8,3"],
+    [2020, "7,9"],
+    [2021, "8,4"],
+    [2022, "8,8"],
+    [2023, "9,3"],
+    [2024, "9,6"]
+  ]
 }
