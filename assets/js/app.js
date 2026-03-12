@@ -320,7 +320,7 @@ const Stats = {
     let classification = 'estacionária';
     if (ciApc[0] > 0) classification = 'crescente';
     else if (ciApc[1] < 0) classification = 'decrescente';
-    return { n, rho, alpha: fit.alpha, beta, p, df, t, ciBeta, apc, ciApc, classification };
+    return { n, rho, alpha: fit.alpha, beta, seBeta: fit.seBeta, p, df, t, ciBeta, apc, ciApc, classification };
   }
 };
 
