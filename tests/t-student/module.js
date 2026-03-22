@@ -383,3 +383,431 @@ function renderDatasusMode(datasus, derived) {
     </div>
   `;
 }
+
+function renderDatasusStatus(datasus) {
+  if (!datasus.imported) {
+    return renderEmptyCard("Nenhum arquivo DATASUS carregado", "Importe um arquivo .csv, .txt ou .tsv para habilitar a leitura automatica.");
+  }
+
+  const imported = datasus.imported;
+  const regionCount = imported.rows.filter((row) => !row.isTotalRow).length;
+  const yearLabel = imported.years.length
+    ? `${imported.years[0]} a ${imported.years[imported.years.length - 1]}`
+    : "Sem anos";
+
+  return `
+    <div class="summary-grid">
+      <div class="summary-card">
+        <span class="summary-label">Arquivo</span>
+        <strong>${escapeMarkup(datasus.fileName)}</strong>
+        <p>${escapeMarkup(imported.separatorLabel)}</p>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Regioes detectadas</span>
+        <strong>${regionCount}</strong>
+        <p>${imported.totalRow ? "Linha Total reconhecida." : "Sem linha Total."}</p>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Anos detectados</span>
+        <strong>${escapeMarkup(yearLabel)}</strong>
+        <p>${imported.years.length} coluna(s) anuais.</p>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Medida detectada</span>
+        <strong>${escapeMarkup(imported.detectedMeasure || imported.detectedTitle || "Nao identificada")}</strong>
+        <p>${imported.metadataLines.length ? escapeMarkup(imported.metadataLines[0]) : "Sem metadados adicionais."}</p>
+      </div>
+    </div>
+  `;
+}
+
+function renderDatasusRawPreview(datasus) {
+  if (!datasus.imported) {
+    return renderEmptyCard("Previa indisponivel", "A tabela bruta aparece depois que o arquivo DATASUS e reconhecido.");
+  }
+
+  const imported = datasus.imported;
+  const headers = [imported.labelHeader]
+    .concat(imported.years)
+    .concat(imported.totalColumn ? [imported.totalColumn] : []);
+  const rows = imported.rows.slice(0, 8).map((row) => {
+    const values = imported.years.map((year) => formatNullableNumber(row.valuesByYear[year]));
+    const totalCell = imported.totalColumn ? [formatNullableNumber(row.totalValue)] : [];
+    return [row.rowLabel].concat(values, totalCell);
+  });
+
+  return `
+    ${imported.metadataLines.length ? `<div class="metadata-card">${imported.metadataLines.map((line) => `<p>${escapeMarkup(line)}</p>`).join("")}</div>` : ""}
+    ${renderSimpleTable(headers, rows, imported.rows.length > rows.length ? `Mostrando ${rows.length} das ${imported.rows.length} linhas reconhecidas.` : "")}
+  `;
+}
+
+function renderDatasusSelection(datasus) {
+  if (!datasus.imported) {
+    return renderEmptyCard("Selecao indisponivel", "Importe um arquivo para listar as regioes detectadas.");
+  }
+
+  const selectableRows = getSelectableRows(datasus);
+
+  return `
+    <div class="selection-toolbar">
+      <label class="inline-check">
+        <input type="checkbox" data-datasus-field="showTotalRow"${datasus.showTotalRow ? " checked" : ""} />
+        <span>Mostrar linha Total (opcao avancada)</span>
+      </label>
+    </div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <span class="summary-label">Grupo A</span>
+        <strong>${datasus.selectedGroupA.size} selecionada(s)</strong>
+        <p>${escapeMarkup(getSelectedRowNames(datasus, "A").join(", ") || "Nenhuma regiao selecionada.")}</p>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Grupo B</span>
+        <strong>${datasus.selectedGroupB.size} selecionada(s)</strong>
+        <p>${escapeMarkup(getSelectedRowNames(datasus, "B").join(", ") || "Nenhuma regiao selecionada.")}</p>
+      </div>
+    </div>
+    ${renderSimpleTable(
+      ["Regiao", "Grupo A", "Grupo B", "Anos validos", "Total"],
+      selectableRows.map((row) => [
+        row.rowLabel,
+        renderCheckboxCell("A", row, datasus.selectedGroupA.has(row.key)),
+        renderCheckboxCell("B", row, datasus.selectedGroupB.has(row.key)),
+        String(row.validYears.length),
+        formatNullableNumber(row.totalValue)
+      ]),
+      "",
+      true
+    )}
+  `;
+}
+
+function renderCheckboxCell(group, row, checked) {
+  return `
+    <label class="checkbox-chip">
+      <input type="checkbox" data-role="datasus-group" data-group="${group}" data-row-key="${escapeAttribute(row.key)}"${checked ? " checked" : ""} />
+      <span>${group}</span>
+    </label>
+  `;
+}
+
+function renderDatasusPeriodControls(datasus, derived) {
+  if (!datasus.imported) {
+    return renderEmptyCard("Periodo indisponivel", "As opcoes de periodo aparecem apos a importacao do arquivo.");
+  }
+
+  const imported = datasus.imported;
+
+  return `
+    <div class="control-grid">
+      <div class="control-card">
+        <span class="summary-label">Periodo</span>
+        <div class="option-stack">
+          ${renderRadioControl("periodMode", "single", datasus.periodMode, "Ano unico")}
+          ${renderRadioControl("periodMode", "range", datasus.periodMode, "Intervalo customizado")}
+          ${renderRadioControl("periodMode", "block", datasus.periodMode, "Blocos de 5 anos")}
+        </div>
+      </div>
+      <div class="control-card">
+        <span class="summary-label">Detalhe do periodo</span>
+        ${renderDatasusPeriodDetail(datasus, imported)}
+        <p class="hint-text">Resumo aplicado: ${escapeMarkup(derived.summaryType || "Media por regiao no periodo")}</p>
+      </div>
+    </div>
+    ${derived.blockNotices.map((notice) => renderNotice(notice)).join("")}
+  `;
+}
+
+function renderDatasusPeriodDetail(datasus, imported) {
+  if (datasus.periodMode === "single") {
+    return `
+      <label class="field field-inline">
+        <span>Ano</span>
+        <select data-datasus-field="singleYear">
+          ${imported.years.map((year) => `<option value="${year}"${String(year) === String(datasus.singleYear) ? " selected" : ""}>${year}</option>`).join("")}
+        </select>
+      </label>
+    `;
+  }
+
+  if (datasus.periodMode === "block") {
+    return `
+      <label class="field field-inline">
+        <span>Bloco</span>
+        <select data-datasus-field="selectedBlockId">
+          ${imported.blocks.map((block) => `<option value="${block.id}"${block.id === datasus.selectedBlockId ? " selected" : ""}>${escapeMarkup(block.label)}</option>`).join("")}
+        </select>
+      </label>
+    `;
+  }
+
+  return `
+    <div class="manual-grid">
+      <label class="field field-inline">
+        <span>Ano inicial</span>
+        <select data-datasus-field="rangeStart">
+          ${imported.years.map((year) => `<option value="${year}"${String(year) === String(datasus.rangeStart) ? " selected" : ""}>${year}</option>`).join("")}
+        </select>
+      </label>
+      <label class="field field-inline">
+        <span>Ano final</span>
+        <select data-datasus-field="rangeEnd">
+          ${imported.years.map((year) => `<option value="${year}"${String(year) === String(datasus.rangeEnd) ? " selected" : ""}>${year}</option>`).join("")}
+        </select>
+      </label>
+    </div>
+  `;
+}
+
+function renderDatasusDerived(derived) {
+  const notices = derived.messages.map((message) => renderNotice(message)).join("");
+
+  if (!derived.hasImportedData) {
+    return `${notices}${renderEmptyCard("Base derivada indisponivel", "Importe o arquivo e selecione as regioes para montar os vetores do teste.")}`;
+  }
+
+  const summary = derived.entries.length
+    ? `
+      <div class="summary-grid">
+        <div class="summary-card">
+          <span class="summary-label">Periodo analisado</span>
+          <strong>${escapeMarkup(derived.periodLabel || "Nao definido")}</strong>
+          <p>${escapeMarkup(derived.summaryType)}</p>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Grupo A</span>
+          <strong>${derived.groupAEntries.length} observacao(oes)</strong>
+          <p>${escapeMarkup(derived.groupAEntries.map((entry) => entry.rowLabel).join(", ") || "Nenhuma.")}</p>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Grupo B</span>
+          <strong>${derived.groupBEntries.length} observacao(oes)</strong>
+          <p>${escapeMarkup(derived.groupBEntries.map((entry) => entry.rowLabel).join(", ") || "Nenhuma.")}</p>
+        </div>
+      </div>
+    `
+    : "";
+
+  const groupLists = derived.entries.length
+    ? `
+      <div class="derived-grid">
+        <div class="summary-card">
+          <span class="summary-label">Grupo A</span>
+          <ul class="derived-list">
+            ${derived.groupAEntries.map((entry) => `<li>${escapeMarkup(entry.rowLabel)} -> ${formatNumber(entry.value)}</li>`).join("")}
+          </ul>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Grupo B</span>
+          <ul class="derived-list">
+            ${derived.groupBEntries.map((entry) => `<li>${escapeMarkup(entry.rowLabel)} -> ${formatNumber(entry.value)}</li>`).join("")}
+          </ul>
+        </div>
+      </div>
+    `
+    : "";
+
+  const table = derived.entries.length
+    ? renderSimpleTable(["Regiao", "Grupo", "Valor resumido"], derived.entries.map((entry) => [entry.rowLabel, entry.groupLabel, formatNumber(entry.value)]))
+    : renderEmptyCard("Base derivada ainda vazia", derived.blockingMessage || "Selecione grupos e periodo para gerar a tabela final.");
+
+  return `${notices}${summary}${groupLists}${table}`;
+}
+
+function renderResultBlock(result) {
+  const stats = [
+    ["n Grupo A", String(result.nA)],
+    ["n Grupo B", String(result.nB)],
+    ["Media Grupo A", formatNumber(result.meanA)],
+    ["Media Grupo B", formatNumber(result.meanB)],
+    ["DP Grupo A", formatNumber(result.sdA)],
+    ["DP Grupo B", formatNumber(result.sdB)],
+    ["Diferenca", formatNumber(result.meanDifference)],
+    ["t", formatNumber(result.t)],
+    ["gl", formatNumber(result.df)],
+    ["p-valor", formatPValue(result.pValue)],
+    ["IC95%", `${formatNumber(result.ciLow)} a ${formatNumber(result.ciHigh)}`],
+    ["Tamanho de efeito", result.effectSize == null ? "NA" : formatNumber(result.effectSize)]
+  ];
+
+  return `
+    <div class="stat-grid">
+      ${stats.map(([label, value]) => `<div class="stat-card"><span class="summary-label">${escapeMarkup(label)}</span><strong>${escapeMarkup(value)}</strong></div>`).join("")}
+    </div>
+    <div class="notice notice-info">
+      <strong>Interpretacao automatica</strong>
+      <p>${escapeMarkup(result.interpretation)}</p>
+    </div>
+    <div class="chart-card">
+      <h5>Comparacao visual das medias</h5>
+      <div class="chart-bars">
+        ${renderChartRow(result.labelA, result.meanA, result.chartMax)}
+        ${renderChartRow(result.labelB, result.meanB, result.chartMax)}
+      </div>
+    </div>
+  `;
+}
+
+function renderChartRow(label, value, maxValue) {
+  const width = maxValue > 0 ? Math.max((Math.abs(value) / maxValue) * 100, 4) : 4;
+
+  return `
+    <div class="chart-row">
+      <div class="chart-copy">
+        <strong>${escapeMarkup(label)}</strong>
+        <span>${formatNumber(value)}</span>
+      </div>
+      <div class="chart-track">
+        <div class="chart-fill" style="width:${width.toFixed(2)}%"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSimpleTable(headers, rows, note = "", allowHtmlCells = false) {
+  return `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>${headers.map((header) => `<th>${escapeMarkup(header)}</th>`).join("")}</tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              ${row.map((cell, index) => {
+                const openTag = index === 0 ? "<th scope=\"row\">" : "<td>";
+                const closeTag = index === 0 ? "</th>" : "</td>";
+                const content = allowHtmlCells && /<[^>]+>/.test(String(cell)) ? String(cell) : escapeMarkup(cell);
+                return `${openTag}${content}${closeTag}`;
+              }).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+    ${note ? `<p class="hint-text">${escapeMarkup(note)}</p>` : ""}
+  `;
+}
+
+function renderNotice(message) {
+  return `
+    <div class="notice notice-${message.kind}">
+      <strong>${escapeMarkup(message.title || "Aviso")}</strong>
+      <p>${escapeMarkup(message.text)}</p>
+    </div>
+  `;
+}
+
+function renderEmptyCard(title, text) {
+  return `
+    <div class="empty-card">
+      <h5>${escapeMarkup(title)}</h5>
+      <p>${escapeMarkup(text)}</p>
+    </div>
+  `;
+}
+
+function renderRadioControl(field, value, selectedValue, label) {
+  return `
+    <label class="option-pill">
+      <input type="radio" name="${field}" value="${value}" data-datasus-field="${field}"${value === selectedValue ? " checked" : ""} />
+      <span>${escapeMarkup(label)}</span>
+    </label>
+  `;
+}
+
+function loadManualExample(manual, config) {
+  manual.groupALabel = DEFAULT_MANUAL_LABEL_A;
+  manual.groupBLabel = DEFAULT_MANUAL_LABEL_B;
+  manual.groupAText = Array.isArray(config?.example?.group1) ? config.example.group1.join("\n") : "4,8\n5,1\n4,9";
+  manual.groupBText = Array.isArray(config?.example?.group2) ? config.example.group2.join("\n") : "6,1\n5,8\n6,0";
+  manual.notice = {
+    kind: "info",
+    title: "Exemplo carregado",
+    text: "Os dois grupos foram preenchidos com os valores de exemplo do modulo."
+  };
+  manual.result = null;
+}
+
+function buildManualPreview(manual) {
+  return {
+    hasAnyInput: Boolean(String(manual.groupAText).trim() || String(manual.groupBText).trim()),
+    groupA: parseManualValues(manual.groupAText),
+    groupB: parseManualValues(manual.groupBText)
+  };
+}
+
+function runManualMode(manual) {
+  const preview = buildManualPreview(manual);
+  const labelA = manual.groupALabel.trim() || DEFAULT_MANUAL_LABEL_A;
+  const labelB = manual.groupBLabel.trim() || DEFAULT_MANUAL_LABEL_B;
+
+  if (preview.groupA.values.length < 2 || preview.groupB.values.length < 2) {
+    manual.notice = {
+      kind: "danger",
+      title: "Observacoes insuficientes",
+      text: "Informe pelo menos 2 valores validos em cada grupo para executar o t test."
+    };
+    manual.result = null;
+    return;
+  }
+
+  manual.notice = preview.groupA.invalid.length || preview.groupB.invalid.length
+    ? {
+        kind: "warning",
+        title: "Itens ignorados",
+        text: "Algumas entradas nao numericas foram ignoradas durante a leitura manual."
+      }
+    : null;
+
+  manual.result = runWelchTTest(preview.groupA.values, preview.groupB.values, {
+    labelA,
+    labelB,
+    interpretation: (stats) => buildManualInterpretation(stats, labelA, labelB)
+  });
+}
+
+function parseManualValues(text) {
+  const values = [];
+  const invalid = [];
+  const lines = String(text || "").split(/\r?\n/);
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      return;
+    }
+
+    let parts = trimmed.includes("\t")
+      ? trimmed.split("\t")
+      : trimmed.includes(";")
+        ? trimmed.split(";")
+        : [trimmed];
+
+    if (parts.length === 1 && trimmed.includes(",") && !looksLikeSingleLocaleNumber(trimmed)) {
+      parts = trimmed.split(",");
+    }
+
+    parts.forEach((part) => {
+      const value = parseLocaleNumber(part);
+
+      if (value == null) {
+        if (String(part).trim()) {
+          invalid.push(String(part).trim());
+        }
+        return;
+      }
+
+      values.push(value);
+    });
+  });
+
+  return { values, invalid };
+}
+
+function looksLikeSingleLocaleNumber(value) {
+  const trimmed = String(value || "").trim();
+  return /^[-+]?\d{1,3}(\.\d{3})*(,\d+)?$/.test(trimmed) || /^[-+]?\d+(,\d+)?$/.test(trimmed);
+}
