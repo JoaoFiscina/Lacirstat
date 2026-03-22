@@ -811,3 +811,384 @@ function looksLikeSingleLocaleNumber(value) {
   const trimmed = String(value || "").trim();
   return /^[-+]?\d{1,3}(\.\d{3})*(,\d+)?$/.test(trimmed) || /^[-+]?\d+(,\d+)?$/.test(trimmed);
 }
+
+async function importDatasusFile(file, datasus) {
+  try {
+    const text = await file.text();
+    loadDatasusFromText(text, file.name, datasus);
+  } catch (error) {
+    datasus.notice = {
+      kind: "danger",
+      title: "Falha na leitura",
+      text: error.message || "Nao foi possivel abrir o arquivo DATASUS."
+    };
+  }
+}
+
+function loadDatasusFromText(text, fileName, datasus) {
+  try {
+    const imported = parseDatasusTable(text);
+    datasus.imported = imported;
+    datasus.fileName = fileName;
+    datasus.showTotalRow = false;
+    datasus.selectedGroupA = new Set();
+    datasus.selectedGroupB = new Set();
+    datasus.periodMode = "range";
+    datasus.singleYear = imported.years[0] || "";
+    datasus.rangeStart = imported.years[0] || "";
+    datasus.rangeEnd = imported.years[imported.years.length - 1] || "";
+    datasus.selectedBlockId = imported.blocks[0]?.id || "";
+    datasus.result = null;
+    datasus.notice = {
+      kind: "success",
+      title: "Arquivo carregado",
+      text: `Foram detectadas ${imported.rows.filter((row) => !row.isTotalRow).length} regioes e ${imported.years.length} colunas de ano.`
+    };
+  } catch (error) {
+    datasus.imported = null;
+    datasus.fileName = "";
+    datasus.selectedGroupA = new Set();
+    datasus.selectedGroupB = new Set();
+    datasus.result = null;
+    datasus.notice = {
+      kind: "danger",
+      title: "Leitura invalida",
+      text: error.message || "Nao foi possivel interpretar o arquivo DATASUS."
+    };
+  }
+}
+
+function updateDatasusField(datasus, field, target) {
+  if (field === "showTotalRow") {
+    datasus.showTotalRow = target.checked;
+
+    if (!datasus.showTotalRow && datasus.imported?.totalRow) {
+      datasus.selectedGroupA.delete(datasus.imported.totalRow.key);
+      datasus.selectedGroupB.delete(datasus.imported.totalRow.key);
+    }
+  }
+
+  if (field === "periodMode") datasus.periodMode = target.value;
+  if (field === "singleYear") datasus.singleYear = target.value;
+  if (field === "rangeStart") datasus.rangeStart = target.value;
+  if (field === "rangeEnd") datasus.rangeEnd = target.value;
+  if (field === "selectedBlockId") datasus.selectedBlockId = target.value;
+}
+
+function toggleDatasusRegion(datasus, group, rowKey, checked) {
+  if (group === "A") {
+    if (checked) {
+      datasus.selectedGroupA.add(rowKey);
+      datasus.selectedGroupB.delete(rowKey);
+    } else {
+      datasus.selectedGroupA.delete(rowKey);
+    }
+    return;
+  }
+
+  if (checked) {
+    datasus.selectedGroupB.add(rowKey);
+    datasus.selectedGroupA.delete(rowKey);
+  } else {
+    datasus.selectedGroupB.delete(rowKey);
+  }
+}
+
+function getSelectableRows(datasus) {
+  if (!datasus.imported) {
+    return [];
+  }
+
+  return datasus.imported.rows.filter((row) => datasus.showTotalRow || !row.isTotalRow);
+}
+
+function getSelectedRowNames(datasus, group) {
+  if (!datasus.imported) {
+    return [];
+  }
+
+  const selected = group === "A" ? datasus.selectedGroupA : datasus.selectedGroupB;
+  return datasus.imported.rows.filter((row) => selected.has(row.key)).map((row) => row.rowLabel);
+}
+
+function buildDatasusDerived(datasus) {
+  const result = {
+    hasImportedData: Boolean(datasus.imported),
+    summaryType: "Media por regiao no periodo",
+    periodLabel: "",
+    groupAEntries: [],
+    groupBEntries: [],
+    entries: [],
+    messages: [],
+    blockNotices: [],
+    canRun: false,
+    blockingMessage: ""
+  };
+
+  if (!datasus.imported) {
+    result.blockingMessage = "Importe um arquivo DATASUS para montar a base derivada.";
+    return result;
+  }
+
+  const period = resolveDatasusPeriod(datasus);
+
+  if (!period.years.length) {
+    result.messages.push({
+      kind: "danger",
+      title: "Periodo invalido",
+      text: period.error || "Nenhum ano valido foi encontrado no intervalo selecionado."
+    });
+    result.blockingMessage = period.error || "Nenhum ano valido foi encontrado no intervalo selecionado.";
+    return result;
+  }
+
+  result.periodLabel = period.label;
+
+  if (period.blockNotice) {
+    result.blockNotices.push(period.blockNotice);
+  }
+
+  const selectedRowsA = datasus.imported.rows.filter((row) => datasus.selectedGroupA.has(row.key));
+  const selectedRowsB = datasus.imported.rows.filter((row) => datasus.selectedGroupB.has(row.key));
+
+  if (selectedRowsA.length === 0 || selectedRowsB.length === 0) {
+    result.messages.push({
+      kind: "warning",
+      title: "Selecao incompleta",
+      text: "Escolha pelo menos 1 regiao em cada grupo antes de montar os vetores."
+    });
+    result.blockingMessage = "Escolha pelo menos 1 regiao em cada grupo.";
+    return result;
+  }
+
+  const summarizedA = summarizeDatasusGroup(selectedRowsA, period.years, "Grupo A");
+  const summarizedB = summarizeDatasusGroup(selectedRowsB, period.years, "Grupo B");
+
+  if (summarizedA.dropped.length || summarizedB.dropped.length) {
+    result.messages.push({
+      kind: "info",
+      title: "Regioes sem valor no periodo",
+      text: `${summarizedA.dropped.length + summarizedB.dropped.length} regiao(oes) foram ignoradas por nao terem valores numericos validos no periodo selecionado.`
+    });
+  }
+
+  result.groupAEntries = summarizedA.entries;
+  result.groupBEntries = summarizedB.entries;
+  result.entries = summarizedA.entries.concat(summarizedB.entries);
+
+  if (result.groupAEntries.length < 2 || result.groupBEntries.length < 2) {
+    result.messages.push({
+      kind: "danger",
+      title: "Observacoes insuficientes",
+      text: "Selecione pelo menos 2 regioes validas em cada grupo."
+    });
+    result.blockingMessage = "Selecione pelo menos 2 regioes validas em cada grupo.";
+    return result;
+  }
+
+  if (result.entries.some((entry) => !Number.isFinite(entry.value))) {
+    result.messages.push({
+      kind: "danger",
+      title: "Valores invalidos",
+      text: "Nao foi possivel montar vetores sem NaN para os grupos selecionados."
+    });
+    result.blockingMessage = "Os vetores finais contem valores invalidos.";
+    return result;
+  }
+
+  result.canRun = true;
+  return result;
+}
+
+function resolveDatasusPeriod(datasus) {
+  const years = datasus.imported?.years || [];
+
+  if (datasus.periodMode === "single") {
+    return {
+      years: datasus.singleYear ? [Number(datasus.singleYear)] : [],
+      label: String(datasus.singleYear || ""),
+      error: datasus.singleYear ? "" : "Selecione um ano valido."
+    };
+  }
+
+  if (datasus.periodMode === "block") {
+    const block = datasus.imported?.blocks.find((item) => item.id === datasus.selectedBlockId);
+
+    if (!block) {
+      return { years: [], label: "", error: "Selecione um bloco valido de 5 anos." };
+    }
+
+    return {
+      years: block.years,
+      label: block.label,
+      error: "",
+      blockNotice: block.isComplete
+        ? null
+        : {
+            kind: "warning",
+            title: "Bloco incompleto",
+            text: `O bloco ${block.label} possui ${block.years.length} de 5 anos disponiveis.`
+          }
+    };
+  }
+
+  const start = Number(datasus.rangeStart);
+  const end = Number(datasus.rangeEnd);
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+    return { years: [], label: "", error: "Nenhum ano valido foi encontrado no intervalo selecionado." };
+  }
+
+  return {
+    years: years.filter((year) => year >= start && year <= end),
+    label: `${start} a ${end}`,
+    error: ""
+  };
+}
+
+function summarizeDatasusGroup(rows, selectedYears, groupLabel) {
+  const entries = [];
+  const dropped = [];
+
+  rows.forEach((row) => {
+    const values = selectedYears
+      .map((year) => row.valuesByYear[String(year)])
+      .filter((value) => Number.isFinite(value));
+
+    if (!values.length) {
+      dropped.push(row.rowLabel);
+      return;
+    }
+
+    entries.push({
+      rowLabel: row.rowLabel,
+      groupLabel,
+      value: mean(values)
+    });
+  });
+
+  return { entries, dropped };
+}
+
+function runDatasusMode(datasus) {
+  const derived = buildDatasusDerived(datasus);
+
+  if (!derived.canRun) {
+    datasus.result = null;
+    datasus.notice = {
+      kind: "danger",
+      title: "Execucao bloqueada",
+      text: derived.blockingMessage || "O periodo selecionado nao gerou observacoes suficientes."
+    };
+    return;
+  }
+
+  datasus.notice = null;
+  datasus.result = runWelchTTest(
+    derived.groupAEntries.map((entry) => entry.value),
+    derived.groupBEntries.map((entry) => entry.value),
+    {
+      labelA: "Grupo A",
+      labelB: "Grupo B",
+      interpretation: (stats) => buildDatasusInterpretation(stats, derived)
+    }
+  );
+}
+
+function buildManualInterpretation(stats, labelA, labelB) {
+  const significance = stats.pValue < 0.05
+    ? "observou-se diferenca estatisticamente significativa"
+    : "nao se observou diferenca estatisticamente significativa";
+  const direction = stats.meanDifference > 0
+    ? `${labelA} apresentou media maior`
+    : stats.meanDifference < 0
+      ? `${labelB} apresentou media maior`
+      : "os dois grupos apresentaram medias equivalentes";
+
+  return `Com base nos valores informados manualmente, ${significance} entre ${labelA} e ${labelB}. ${direction}.`;
+}
+
+function buildDatasusInterpretation(stats, derived) {
+  const significance = stats.pValue < 0.05
+    ? "observou-se diferenca estatisticamente significativa"
+    : "nao se observou diferenca estatisticamente significativa";
+  const direction = stats.meanDifference > 0
+    ? "A media foi maior no Grupo A."
+    : stats.meanDifference < 0
+      ? "A media foi maior no Grupo B."
+      : "As medias dos grupos ficaram equivalentes.";
+
+  return `Apos resumir os valores de cada regiao no periodo ${derived.periodLabel} e comparar os grupos definidos pelo usuario, ${significance} entre Grupo A e Grupo B. O resumo usado foi media por regiao no periodo. Grupo A: ${derived.groupAEntries.map((entry) => entry.rowLabel).join(", ")}. Grupo B: ${derived.groupBEntries.map((entry) => entry.rowLabel).join(", ")}. ${direction}`;
+}
+
+function runWelchTTest(sampleA, sampleB, options) {
+  const nA = sampleA.length;
+  const nB = sampleB.length;
+  const meanA = mean(sampleA);
+  const meanB = mean(sampleB);
+  const varianceA = sampleVariance(sampleA);
+  const varianceB = sampleVariance(sampleB);
+  const sdA = Math.sqrt(varianceA);
+  const sdB = Math.sqrt(varianceB);
+  const meanDifference = meanA - meanB;
+  const seTermA = varianceA / nA;
+  const seTermB = varianceB / nB;
+  const standardError = Math.sqrt(seTermA + seTermB);
+
+  if (!Number.isFinite(standardError) || standardError === 0) {
+    throw new Error("Nao foi possivel calcular o t test porque a variabilidade dos grupos e zero.");
+  }
+
+  const t = meanDifference / standardError;
+  const numerator = (seTermA + seTermB) ** 2;
+  const denominator = (seTermA ** 2) / Math.max(nA - 1, 1) + (seTermB ** 2) / Math.max(nB - 1, 1);
+  const df = numerator / denominator;
+  const pValue = 2 * (1 - studentTCdf(Math.abs(t), df));
+  const critical = inverseStudentT(0.975, df);
+  const effectSize = computeHedgesG(sampleA, sampleB, varianceA, varianceB);
+
+  const stats = {
+    nA,
+    nB,
+    meanA,
+    meanB,
+    sdA,
+    sdB,
+    meanDifference,
+    t,
+    df,
+    pValue,
+    ciLow: meanDifference - (critical * standardError),
+    ciHigh: meanDifference + (critical * standardError),
+    effectSize,
+    labelA: options.labelA,
+    labelB: options.labelB,
+    chartMax: Math.max(Math.abs(meanA), Math.abs(meanB), 1)
+  };
+
+  return {
+    ...stats,
+    interpretation: options.interpretation(stats)
+  };
+}
+
+function computeHedgesG(sampleA, sampleB, varianceA, varianceB) {
+  const nA = sampleA.length;
+  const nB = sampleB.length;
+  const pooledDenominator = nA + nB - 2;
+
+  if (pooledDenominator <= 0) {
+    return null;
+  }
+
+  const pooledVariance = (((nA - 1) * varianceA) + ((nB - 1) * varianceB)) / pooledDenominator;
+  const pooledSd = Math.sqrt(pooledVariance);
+
+  if (!Number.isFinite(pooledSd) || pooledSd === 0) {
+    return null;
+  }
+
+  const d = (mean(sampleA) - mean(sampleB)) / pooledSd;
+  const correction = 1 - (3 / ((4 * (nA + nB)) - 9));
+  return d * correction;
+}
