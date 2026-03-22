@@ -161,6 +161,10 @@ async function loadTest(testItem, manifest) {
 
 async function init() {
   try {
+    if (window.location.protocol === "file:") {
+      throw new Error("Esta aplicacao precisa ser aberta por HTTP ou HTTPS. Use GitHub Pages ou um servidor local, nao file://.");
+    }
+
     utils.showLoading(navRoot, "Carregando testes...");
     utils.showLoading(moduleRoot, "Preparando o ambiente...");
 
