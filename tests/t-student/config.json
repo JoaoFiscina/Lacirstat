@@ -1,11 +1,11 @@
 {
   "title": "t de Student",
-  "subtitle": "Comparação entre duas médias",
-  "description": "Use este teste para comparar a média de uma variável quantitativa entre dois grupos.",
+  "subtitle": "Comparacao entre duas medias",
+  "description": "Importe um CSV DATASUS tabulado, monte os grupos a partir das regioes e rode o t test com base derivada explicita.",
   "inputGuide": [
-    "Informe os valores do Grupo 1 e do Grupo 2.",
-    "Cada linha representa uma observação.",
-    "Os dados podem ser colados do Excel."
+    "Clique em Importar CSV DATASUS para carregar o arquivo tabulado.",
+    "Selecione as linhas que entram no Grupo A e no Grupo B.",
+    "Revise a base derivada antes de rodar o teste."
   ],
   "example": {
     "group1": [4.8, 5.1, 4.9, 5.0, 4.7],
