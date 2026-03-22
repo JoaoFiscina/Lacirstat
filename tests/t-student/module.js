@@ -332,7 +332,9 @@ function renderControls(container, state) {
   }
   const years = state.parsed.years.map((item) => item.year);
   const blocks = getBlockOptions(state);
-  const help = state.testType === "independent" ? "No modo independente, cada regiao selecionada permanece como observacao separada no grupo." : "Nos modos pareados, as observacoes finais sao anos ou blocos comparaveis entre Grupo A e Grupo B.";
+  const help = state.testType === "independent"
+    ? "No modo independente, media, soma e linha unica resumem os anos dentro de cada regiao. As regioes continuam separadas como observacoes."
+    : "Nos modos pareados, media, soma e linha unica combinam as linhas selecionadas dentro de cada ano ou bloco comparavel.";
   container.innerHTML = `
     <div class="control-grid">
       <div class="control-card">
@@ -360,7 +362,8 @@ function renderControls(container, state) {
           ${renderRadioOption("period-mode", "block", state.periodMode, PERIOD_MODE_LABELS.block)}
         </div>
         ${state.periodMode === "range" ? `<div class="inline-fields"><label>Inicio<select id="datasus-range-start">${years.map((year) => `<option value="${year}"${year === state.rangeStart ? " selected" : ""}>${year}</option>`).join("")}</select></label><label>Fim<select id="datasus-range-end">${years.map((year) => `<option value="${year}"${year === state.rangeEnd ? " selected" : ""}>${year}</option>`).join("")}</select></label></div>` : ""}
-        ${state.periodMode === "block" ? `<div class="inline-fields inline-fields-single"><label>Bloco disponivel<select id="datasus-block-select">${blocks.map((block) => `<option value="${block.id}"${block.id === state.selectedBlockId ? " selected" : ""}>${escapeMarkup(block.label)}</option>`).join("")}</select></label></div>` : ""}
+        ${state.periodMode === "block" && state.testType === "independent" ? `<div class="inline-fields inline-fields-single"><label>Bloco disponivel<select id="datasus-block-select">${blocks.map((block) => `<option value="${block.id}"${block.id === state.selectedBlockId ? " selected" : ""}>${escapeMarkup(block.label)}</option>`).join("")}</select></label></div>` : ""}
+        ${state.periodMode === "block" && state.testType !== "independent" ? `<p class="hint-text">No modo pareado por bloco, a serie inteira sera quebrada automaticamente em blocos consecutivos de 5 anos.</p>` : ""}
       </div>
     </div>
   `;
@@ -460,7 +463,7 @@ function buildPairedYearDataset(state, selectedA, selectedB) {
 
 function buildPairedBlockDataset(state, selectedA, selectedB) {
   if (state.aggregationMode === "single" && (selectedA.length !== 1 || selectedB.length !== 1)) return { canRun: false, messages: [{ kind: "warning", title: "Linha unica requerida", text: "A opcao Linha unica sem agregar exige exatamente uma linha em cada grupo." }], blockingMessage: "Ajuste a selecao de linhas ou troque o metodo de resumo." };
-  const years = state.periodMode === "block" ? getYearsFromSelectedBlock(state) : getSelectedYears(state);
+  const years = state.periodMode === "range" ? getSelectedYears(state) : state.parsed.years.map((item) => item.year);
   const blocks = createFiveYearBlocks(years);
   if (!blocks.length) return { canRun: false, messages: [{ kind: "danger", title: "Sem blocos validos", text: "Nao foi possivel formar blocos de 5 anos a partir do periodo escolhido." }], blockingMessage: "Escolha um periodo que permita formar pelo menos um bloco." };
   const messages = [];
