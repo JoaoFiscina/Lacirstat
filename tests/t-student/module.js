@@ -99,6 +99,7 @@ export async function renderTestModule(ctx) {
     if (!file) return;
     await importDatasusFile(file, state);
     renderAll(refs, state);
+    refs.fileInput.value = "";
   });
 
   root.addEventListener("click", (event) => {
@@ -435,7 +436,7 @@ function buildDerivedDataset(state) {
 }
 
 function buildPairedYearDataset(state, selectedA, selectedB) {
-  if (state.periodMode === "block") return { canRun: false, messages: [{ kind: "warning", title: "Modo incompatível", text: "O t pareado por ano precisa de anos individuais. Use intervalo customizado ou troque para t pareado por bloco de 5 anos." }], blockingMessage: "Troque o tipo de teste ou o periodo para gerar a base derivada." };
+  if (state.periodMode === "block") return { canRun: false, messages: [{ kind: "warning", title: "Modo incompativel", text: "O t pareado por ano precisa de anos individuais. Use intervalo customizado ou troque para t pareado por bloco de 5 anos." }], blockingMessage: "Troque o tipo de teste ou o periodo para gerar a base derivada." };
   if (state.aggregationMode === "single" && (selectedA.length !== 1 || selectedB.length !== 1)) return { canRun: false, messages: [{ kind: "warning", title: "Linha unica requerida", text: "A opcao Linha unica sem agregar exige exatamente uma linha em cada grupo." }], blockingMessage: "Ajuste a selecao de linhas ou troque o metodo de resumo." };
   const years = getSelectedYears(state);
   if (!years.length) return { canRun: false, messages: [{ kind: "danger", title: "Sem anos validos", text: "Nao foi possivel localizar anos dentro do periodo escolhido." }], blockingMessage: "Selecione pelo menos um ano valido." };
