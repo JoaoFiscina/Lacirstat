@@ -165,7 +165,37 @@ body {
   border-color: var(--border);
 }
 
+.mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mode-tab {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mode-tab.is-active {
+  border-color: var(--accent);
+  background: rgba(102, 179, 255, 0.14);
+}
+
+.mode-panel.is-hidden {
+  display: none;
+}
+
 .t-module {
+  display: grid;
+  gap: 20px;
+}
+
+.mode-stack {
   display: grid;
   gap: 20px;
 }
@@ -216,7 +246,9 @@ body {
 .selector-actions,
 .option-stack,
 .inline-fields,
-.chart-copy {
+.chart-copy,
+.mode-tabs,
+.selection-toolbar {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -273,11 +305,16 @@ body {
 .empty-card,
 .chart-card,
 .notice,
-.selector-card {
+.selector-card,
+.metadata-card {
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.03);
   border-radius: 18px;
   padding: 14px;
+}
+
+.metadata-card p:last-child {
+  margin-bottom: 0;
 }
 
 .summary-card-accent,
@@ -331,6 +368,67 @@ body {
 
 .selector-btn-ghost {
   opacity: 0.75;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 220px;
+}
+
+.field-inline {
+  max-width: 280px;
+}
+
+.manual-grid,
+.derived-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.checkbox-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.checkbox-chip input {
+  margin: 0;
+}
+
+.derived-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+}
+
+.derived-list li + li {
+  margin-top: 6px;
 }
 
 .inline-fields label {
