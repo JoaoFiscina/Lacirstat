@@ -1192,3 +1192,397 @@ function computeHedgesG(sampleA, sampleB, varianceA, varianceB) {
   const correction = 1 - (3 / ((4 * (nA + nB)) - 9));
   return d * correction;
 }
+
+function parseDatasusTable(text) {
+  const rawLines = String(text || "")
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\u00A0/g, " ").trim())
+    .filter((line) => line.length > 0);
+
+  if (!rawLines.length) {
+    throw new Error("Nao foi possivel interpretar o arquivo DATASUS.");
+  }
+
+  const candidates = [";", "\t", ","]
+    .map((separator, index) => detectHeaderCandidate(rawLines, separator, index))
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score || left.priority - right.priority || left.headerIndex - right.headerIndex);
+
+  const selected = candidates[0];
+
+  if (!selected) {
+    throw new Error("Nao foi possivel interpretar o arquivo DATASUS.");
+  }
+
+  const metadataLines = rawLines.slice(0, selected.headerIndex);
+  const rows = [];
+  let totalRow = null;
+
+  for (let index = selected.headerIndex + 1; index < rawLines.length; index += 1) {
+    const cells = splitDelimitedLine(rawLines[index], selected.separator);
+    const rowLabel = cleanCell(cells[0]);
+
+    if (!rowLabel) {
+      continue;
+    }
+
+    const valuesByYear = {};
+    const validYears = [];
+
+    selected.years.forEach((year) => {
+      const value = parseLocaleNumber(cells[year.index]);
+      valuesByYear[String(year.value)] = value;
+      if (Number.isFinite(value)) {
+        validYears.push(year.value);
+      }
+    });
+
+    const totalValue = selected.totalIndex >= 0 ? parseLocaleNumber(cells[selected.totalIndex]) : null;
+    const row = {
+      key: `${rowLabel}-${rows.length}`,
+      rowLabel,
+      valuesByYear,
+      validYears,
+      totalValue,
+      isTotalRow: normalizeForCompare(rowLabel) === "total"
+    };
+
+    if (!validYears.length && totalValue == null) {
+      continue;
+    }
+
+    rows.push(row);
+
+    if (row.isTotalRow) {
+      totalRow = row;
+    }
+  }
+
+  if (!rows.length) {
+    throw new Error("Nao foi possivel interpretar o arquivo DATASUS.");
+  }
+
+  const years = selected.years.map((year) => year.value).sort((left, right) => left - right);
+
+  return {
+    separator: selected.separator,
+    separatorLabel: describeSeparator(selected.separator),
+    metadataLines,
+    detectedTitle: metadataLines[0] || "",
+    detectedMeasure: metadataLines[1] || "",
+    labelHeader: cleanCell(selected.headerCells[0]) || "Regiao",
+    years,
+    totalColumn: selected.totalIndex >= 0 ? cleanCell(selected.headerCells[selected.totalIndex]) || "Total" : "",
+    rows,
+    totalRow,
+    blocks: createFiveYearBlocks(years)
+  };
+}
+
+function detectHeaderCandidate(lines, separator, priority) {
+  let best = null;
+
+  lines.forEach((line, headerIndex) => {
+    if (separator !== "\t" && !line.includes(separator)) {
+      return;
+    }
+
+    if (separator === "\t" && !line.includes("\t")) {
+      return;
+    }
+
+    const cells = splitDelimitedLine(line, separator);
+    const normalizedCells = cells.map((cell) => normalizeForCompare(cell));
+    const labelMatches =
+      normalizedCells[0] === "regiao" ||
+      normalizedCells[0] === "regiao/geografia" ||
+      normalizedCells[0].startsWith("regiao");
+    const years = cells
+      .map((cell, index) => ({ value: cleanCell(cell), index }))
+      .filter((cell) => /^\d{4}$/.test(cell.value));
+    const totalIndex = normalizedCells.findIndex((cell) => cell === "total");
+
+    if (!labelMatches || !years.length) {
+      return;
+    }
+
+    const score = (years.length * 10) + (totalIndex >= 0 ? 4 : 0) + (cells.length - headerIndex);
+
+    if (!best || score > best.score) {
+      best = {
+        priority,
+        score,
+        headerIndex,
+        separator,
+        headerCells: cells,
+        years,
+        totalIndex
+      };
+    }
+  });
+
+  return best;
+}
+
+function splitDelimitedLine(line, separator) {
+  const cells = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === "\"") {
+      if (inQuotes && next === "\"") {
+        current += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === separator && !inQuotes) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current);
+  return cells.map((cell) => cleanCell(cell));
+}
+
+function createFiveYearBlocks(years) {
+  if (!years.length) {
+    return [];
+  }
+
+  const sorted = [...years].sort((left, right) => left - right);
+  const blocks = [];
+  let start = sorted[0];
+  const end = sorted[sorted.length - 1];
+
+  while (start <= end) {
+    const expectedEnd = start + 4;
+    const blockYears = sorted.filter((year) => year >= start && year <= expectedEnd);
+    const isComplete = blockYears.length === 5;
+    blocks.push({
+      id: `${start}-${expectedEnd}`,
+      label: isComplete ? `${start}-${expectedEnd}` : `${start}-${expectedEnd} (incompleto)`,
+      years: blockYears,
+      isComplete
+    });
+    start += 5;
+  }
+
+  return blocks;
+}
+
+function buildDatasusExampleText() {
+  const years = Array.from({ length: 19 }, (_, index) => 2008 + index);
+  const header = ["Regiao"].concat(years, "Total").join(";");
+  const dataLines = Object.entries(DEFAULT_DATASUS_SERIES).map(([label, series]) => {
+    const total = sum(series);
+    return [label]
+      .concat(series.map((value) => formatExampleNumber(value)))
+      .concat(formatExampleNumber(total))
+      .join(";");
+  });
+  const totalSeries = years.map((_, yearIndex) => sum(Object.values(DEFAULT_DATASUS_SERIES).map((series) => series[yearIndex])));
+  const totalLine = ["Total"]
+    .concat(totalSeries.map((value) => formatExampleNumber(value)))
+    .concat(formatExampleNumber(sum(totalSeries)))
+    .join(";");
+
+  return [
+    "Procedimentos hospitalares do SUS - por local de internacao - Brasil",
+    "Media permanencia por Regiao e Ano processamento",
+    "Grupo procedimento: Exemplo didatico",
+    "Subgrupo proced.: Exemplo didatico",
+    "Periodo: 2008 a 2026",
+    header
+  ]
+    .concat(dataLines, totalLine)
+    .join("\n");
+}
+
+function formatExampleNumber(value) {
+  return Number(value).toFixed(1).replace(".", ",");
+}
+
+function describeSeparator(separator) {
+  if (separator === "\t") return "Separador tabulado";
+  if (separator === ",") return "Separador por virgula";
+  return "Separador por ponto e virgula";
+}
+
+function parseLocaleNumber(value) {
+  const trimmed = cleanCell(value);
+
+  if (!trimmed || /^(-|na|n\/a)$/i.test(trimmed)) {
+    return null;
+  }
+
+  let normalized = trimmed.replace(/\s+/g, "");
+
+  if (/^[-+]?\d{1,3}(\.\d{3})+(,\d+)?$/.test(normalized)) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else if (/^[-+]?\d+(,\d+)$/.test(normalized)) {
+    normalized = normalized.replace(",", ".");
+  } else if (/^[-+]?\d{1,3}(\.\d{3})+$/.test(normalized)) {
+    normalized = normalized.replace(/\./g, "");
+  }
+
+  normalized = normalized.replace(/[^0-9.+-]/g, "");
+
+  if (!normalized || normalized === "-" || normalized === ".") {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function mean(values) {
+  return sum(values) / values.length;
+}
+
+function sum(values) {
+  return values.reduce((accumulator, value) => accumulator + value, 0);
+}
+
+function sampleVariance(values) {
+  if (!Array.isArray(values) || values.length < 2) {
+    return 0;
+  }
+
+  const average = mean(values);
+  return sum(values.map((value) => (value - average) ** 2)) / (values.length - 1);
+}
+
+function logGamma(z) {
+  const coefficients = [676.5203681218851, -1259.1392167224028, 771.3234287776531, -176.6150291621406, 12.507343278686905, -0.13857109526572012, 9.984369578019572e-6, 1.5056327351493116e-7];
+
+  if (z < 0.5) {
+    return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * z)) - logGamma(1 - z);
+  }
+
+  let accumulator = 0.9999999999998099;
+  const shifted = z - 1;
+  coefficients.forEach((coefficient, index) => {
+    accumulator += coefficient / (shifted + index + 1);
+  });
+  const t = shifted + coefficients.length - 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + ((shifted + 0.5) * Math.log(t)) - t + Math.log(accumulator);
+}
+
+function betaContinuedFraction(a, b, x) {
+  const epsilon = 3e-7;
+  const tiny = 1e-30;
+  let c = 1;
+  let d = 1 - (((a + b) * x) / (a + 1));
+
+  if (Math.abs(d) < tiny) d = tiny;
+  d = 1 / d;
+  let h = d;
+
+  for (let m = 1; m <= 200; m += 1) {
+    const m2 = 2 * m;
+    let aa = (m * (b - m) * x) / ((a - 1 + m2) * (a + m2));
+    d = 1 + aa * d;
+    c = 1 + aa / c;
+    if (Math.abs(d) < tiny) d = tiny;
+    if (Math.abs(c) < tiny) c = tiny;
+    d = 1 / d;
+    h *= d * c;
+
+    aa = (-((a + m) * (a + b + m) * x)) / ((a + m2) * (a + 1 + m2));
+    d = 1 + aa * d;
+    c = 1 + aa / c;
+    if (Math.abs(d) < tiny) d = tiny;
+    if (Math.abs(c) < tiny) c = tiny;
+    d = 1 / d;
+    const delta = d * c;
+    h *= delta;
+
+    if (Math.abs(delta - 1) < epsilon) break;
+  }
+
+  return h;
+}
+
+function regularizedIncompleteBeta(x, a, b) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(logGamma(a + b) - logGamma(a) - logGamma(b) + (a * Math.log(x)) + (b * Math.log(1 - x)));
+  if (x < (a + 1) / (a + b + 2)) return (bt * betaContinuedFraction(a, b, x)) / a;
+  return 1 - ((bt * betaContinuedFraction(b, a, 1 - x)) / b);
+}
+
+function studentTCdf(t, df) {
+  if (!Number.isFinite(t)) return t > 0 ? 1 : 0;
+  const x = df / (df + (t * t));
+  const value = regularizedIncompleteBeta(x, df / 2, 0.5);
+  return t >= 0 ? 1 - (0.5 * value) : 0.5 * value;
+}
+
+function inverseStudentT(probability, df) {
+  if (probability <= 0 || probability >= 1) {
+    throw new Error("A probabilidade deve estar entre 0 e 1.");
+  }
+
+  let low = -20;
+  let high = 20;
+  while (studentTCdf(high, df) < probability) high *= 2;
+  while (studentTCdf(low, df) > probability) low *= 2;
+
+  for (let iteration = 0; iteration < 120; iteration += 1) {
+    const mid = (low + high) / 2;
+    const cdf = studentTCdf(mid, df);
+    if (cdf < probability) low = mid; else high = mid;
+  }
+
+  return (low + high) / 2;
+}
+
+function formatNullableNumber(value) {
+  return Number.isFinite(value) ? PT_NUMBER.format(value) : "NA";
+}
+
+function formatNumber(value) {
+  return PT_NUMBER.format(value);
+}
+
+function formatPValue(value) {
+  if (!Number.isFinite(value)) return "NA";
+  return value < 0.0001 ? "< 0,0001" : PT_NUMBER.format(value);
+}
+
+function cleanCell(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeForCompare(value) {
+  return cleanCell(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function escapeMarkup(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeAttribute(value) {
+  return escapeMarkup(value).replace(/\n/g, "&#10;");
+}
