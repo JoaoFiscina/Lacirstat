@@ -1,11 +1,11 @@
 {
   "title": "t de Student",
   "subtitle": "Comparacao entre duas medias",
-  "description": "Importe um CSV DATASUS tabulado, monte os grupos a partir das regioes e rode o t test com base derivada explicita.",
+  "description": "Compare dois grupos por colagem manual ou por importacao de arquivo DATASUS tabulado, mantendo cada regiao como observacao separada.",
   "inputGuide": [
-    "Clique em Importar CSV DATASUS para carregar o arquivo tabulado.",
-    "Selecione as linhas que entram no Grupo A e no Grupo B.",
-    "Revise a base derivada antes de rodar o teste."
+    "Use o modo manual para colar valores diretamente.",
+    "Use o modo Importar CSV DATASUS para ler regioes e anos automaticamente.",
+    "Revise a base derivada final antes de rodar o teste."
   ],
   "example": {
     "group1": [4.8, 5.1, 4.9, 5.0, 4.7],
