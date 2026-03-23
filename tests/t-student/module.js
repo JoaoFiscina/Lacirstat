@@ -552,3 +552,379 @@ function deriveDatasusComparison(state, stats) {
     }
   };
 }
+
+function safeWelch(g1, g2, stats) {
+  const n1 = g1.length;
+  const n2 = g2.length;
+  const m1 = stats.mean(g1);
+  const m2 = stats.mean(g2);
+  const s1 = stats.sd(g1);
+  const s2 = stats.sd(g2);
+  const v1 = s1 ** 2;
+  const v2 = s2 ** 2;
+  const diff = m1 - m2;
+  const se = Math.sqrt(v1 / n1 + v2 / n2);
+  const t = se === 0 ? 0 : diff / se;
+  const dfDen = (((v1 / n1) ** 2) / (n1 - 1)) + (((v2 / n2) ** 2) / (n2 - 1));
+  const df = dfDen === 0 ? n1 + n2 - 2 : ((v1 / n1 + v2 / n2) ** 2) / dfDen;
+  const p = Number.isFinite(df) && df > 0 ? 2 * (1 - stats.tcdf(Math.abs(t), df)) : NaN;
+  const tcrit = Number.isFinite(df) && df > 0 ? stats.tInv(0.975, df) : NaN;
+  const ci = Number.isFinite(tcrit) ? [diff - tcrit * se, diff + tcrit * se] : [NaN, NaN];
+  const spDen = n1 + n2 - 2;
+  const sp = spDen > 0 ? Math.sqrt((((n1 - 1) * v1) + ((n2 - 1) * v2)) / spDen) : NaN;
+  const d = !Number.isFinite(sp) || sp === 0 ? 0 : diff / sp;
+  return { n1, n2, m1, m2, s1, s2, diff, se, t, df, p, ci, d };
+}
+
+function buildDistributionSvg(g1, g2, label1, label2, stats, utils) {
+  const width = 860;
+  const height = 420;
+  const margin = { top: 24, right: 24, bottom: 56, left: 86 };
+  const all = [...g1, ...g2];
+  const min = Math.min(...all);
+  const max = Math.max(...all);
+  const pad = (max - min || 1) * 0.1;
+  const yMin = min - pad;
+  const yMax = max + pad;
+
+  const y = value => height - margin.bottom - ((value - yMin) / (yMax - yMin || 1)) * (height - margin.top - margin.bottom);
+  const xCenters = [290, 590];
+  const jitter = i => ((i % 10) - 4.5) * 5;
+  const ticks = Array.from({ length: 6 }, (_, i) => yMin + ((yMax - yMin) * i) / 5);
+
+  const grid = ticks.map(tick => {
+    const py = y(tick);
+    return `<g><line x1="${margin.left}" y1="${py.toFixed(2)}" x2="${width - margin.right}" y2="${py.toFixed(2)}" stroke="#dbe5f2" stroke-dasharray="4 6"/><text x="${margin.left - 12}" y="${(py + 4).toFixed(2)}" fill="#5b6b84" text-anchor="end" font-size="12">${utils.fmtNumber(tick, 1)}</text></g>`;
+  }).join('');
+
+  function drawGroup(values, cx, color, label) {
+    const sum = summarize(values, stats);
+    const points = values.map((value, i) => `<circle cx="${(cx + jitter(i)).toFixed(2)}" cy="${y(value).toFixed(2)}" r="5.4" fill="${color}" fill-opacity="0.9" stroke="#fff" stroke-width="1.8"><title>${utils.escapeHtml(label)}: ${utils.fmtNumber(value, 2)}</title></circle>`).join('');
+    return `
+      <line x1="${cx}" y1="${y(sum.max).toFixed(2)}" x2="${cx}" y2="${y(sum.min).toFixed(2)}" stroke="${color}" stroke-width="2.6" opacity="0.7"/>
+      <rect x="${cx - 28}" y="${y(sum.q3).toFixed(2)}" width="56" height="${Math.max(10, y(sum.q1) - y(sum.q3)).toFixed(2)}" rx="10" fill="${color}" fill-opacity="0.12" stroke="${color}" stroke-width="2"/>
+      <line x1="${cx - 32}" y1="${y(sum.mean).toFixed(2)}" x2="${cx + 32}" y2="${y(sum.mean).toFixed(2)}" stroke="${color}" stroke-width="3"/>
+      ${points}
+    `;
+  }
+
+  return `
+    <svg class="groupplot-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Distribuição dos dois grupos">
+      <rect x="0" y="0" width="${width}" height="${height}" rx="20" fill="#fff"/>
+      ${grid}
+      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#8da1bc"/>
+      ${drawGroup(g1, xCenters[0], '#2563eb', label1)}
+      ${drawGroup(g2, xCenters[1], '#0f766e', label2)}
+      <text x="${xCenters[0]}" y="${height - 18}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(label1)}</text>
+      <text x="${xCenters[1]}" y="${height - 18}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(label2)}</text>
+    </svg>
+  `;
+}
+
+function buildMeanCiSvg(result, labels, utils) {
+  const width = 860;
+  const height = 300;
+  const margin = { top: 28, right: 24, bottom: 56, left: 86 };
+  const vals = [result.m1, result.m2, result.ci[0], result.ci[1]];
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const pad = (max - min || 1) * 0.25;
+  const yMin = min - pad;
+  const yMax = max + pad;
+  const y = value => height - margin.bottom - ((value - yMin) / (yMax - yMin || 1)) * (height - margin.top - margin.bottom);
+  const x1 = 290;
+  const x2 = 590;
+
+  return `
+    <svg class="groupplot-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Médias e intervalo de confiança da diferença">
+      <rect x="0" y="0" width="${width}" height="${height}" rx="20" fill="#fff"/>
+      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#8da1bc"/>
+      <line x1="${x1}" y1="${y(result.m1).toFixed(2)}" x2="${x2}" y2="${y(result.m2).toFixed(2)}" stroke="#94a3b8" stroke-dasharray="6 5"/>
+      <rect x="${x1 - 40}" y="${y(result.m1).toFixed(2)}" width="80" height="${height - margin.bottom - y(result.m1)}" fill="#2563eb" fill-opacity="0.14"/>
+      <rect x="${x2 - 40}" y="${y(result.m2).toFixed(2)}" width="80" height="${height - margin.bottom - y(result.m2)}" fill="#0f766e" fill-opacity="0.14"/>
+      <circle cx="${x1}" cy="${y(result.m1).toFixed(2)}" r="8" fill="#2563eb"/>
+      <circle cx="${x2}" cy="${y(result.m2).toFixed(2)}" r="8" fill="#0f766e"/>
+      <line x1="${width / 2}" y1="${y(result.ci[0]).toFixed(2)}" x2="${width / 2}" y2="${y(result.ci[1]).toFixed(2)}" stroke="#1e293b" stroke-width="3"/>
+      <line x1="${width / 2 - 16}" y1="${y(result.ci[0]).toFixed(2)}" x2="${width / 2 + 16}" y2="${y(result.ci[0]).toFixed(2)}" stroke="#1e293b" stroke-width="3"/>
+      <line x1="${width / 2 - 16}" y1="${y(result.ci[1]).toFixed(2)}" x2="${width / 2 + 16}" y2="${y(result.ci[1]).toFixed(2)}" stroke="#1e293b" stroke-width="3"/>
+      <text x="${x1}" y="${height - 20}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(labels[0])}</text>
+      <text x="${x2}" y="${height - 20}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(labels[1])}</text>
+      <text x="${width / 2}" y="${margin.top}" text-anchor="middle" fill="#334155" font-size="12" font-weight="700">IC95% da diferença (${utils.escapeHtml(labels[0])} − ${utils.escapeHtml(labels[1])})</text>
+    </svg>
+  `;
+}
+
+function renderAnalysisError(statusEl, metricsEl, chartEl, resultsEl, message) {
+  statusEl.className = 'error-box';
+  statusEl.textContent = message;
+  metricsEl.innerHTML = '';
+  chartEl.innerHTML = '';
+  resultsEl.innerHTML = '';
+}
+
+function buildResultMetricsHtml(result, labels, utils) {
+  return `
+    <div class="metric-card">
+      <div class="metric-label">${utils.escapeHtml(labels[0])}</div>
+      <div class="metric-value">${utils.fmtNumber(result.m1, 2)}</div>
+      <div class="metric-mini">n = ${result.n1} · DP = ${utils.fmtNumber(result.s1, 2)}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">${utils.escapeHtml(labels[1])}</div>
+      <div class="metric-value">${utils.fmtNumber(result.m2, 2)}</div>
+      <div class="metric-mini">n = ${result.n2} · DP = ${utils.fmtNumber(result.s2, 2)}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Diferença entre médias</div>
+      <div class="metric-value">${utils.fmtSigned(result.diff, 2)}</div>
+      <div class="metric-mini">IC95%: ${utils.fmtNumber(result.ci[0], 2)} a ${utils.fmtNumber(result.ci[1], 2)}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Estatística t</div>
+      <div class="metric-value">${utils.fmtNumber(result.t, 3)}</div>
+      <div class="metric-mini">gl = ${utils.fmtNumber(result.df, 2)} · p = ${utils.fmtP(result.p)}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Cohen&apos;s d</div>
+      <div class="metric-value">${utils.fmtSigned(result.d, 2)}</div>
+      <div class="metric-mini">Classificação: ${utils.escapeHtml(classifyEffect(result.d))}</div>
+    </div>
+  `;
+}
+
+function buildResultChartsHtml(result, labels, g1, g2, stats, utils) {
+  return `
+    <article class="chart-card">
+      <h4>Gráfico 1 · Distribuição e dispersão por grupo</h4>
+      <div class="chart-wrap">${buildDistributionSvg(g1, g2, labels[0], labels[1], stats, utils)}</div>
+    </article>
+    <article class="chart-card">
+      <h4>Gráfico 2 · Comparação de médias e IC95%</h4>
+      <div class="chart-wrap">${buildMeanCiSvg(result, labels, utils)}</div>
+      <div class="small-note" style="margin-top:10px;">A barra central indica o IC95% da diferença (${utils.escapeHtml(labels[0])} − ${utils.escapeHtml(labels[1])}).</div>
+    </article>
+  `;
+}
+
+function buildManualInterpretation(result, alpha, labels, question, utils) {
+  const effectClass = classifyEffect(result.d);
+  const higherGroup = result.diff >= 0 ? labels[0] : labels[1];
+  const diffAbs = Math.abs(result.diff);
+  const impactText = Math.abs(result.d) < 0.2 ? 'baixo' : Math.abs(result.d) < 0.8 ? 'intermediário' : 'alto';
+  const significant = result.p < alpha;
+
+  const paragraph = significant
+    ? `Observou-se diferença estatisticamente significativa entre a média de ${labels[0]} e ${labels[1]}. A média foi maior em ${higherGroup}, com diferença média de ${utils.fmtNumber(diffAbs, 2)} unidades. O tamanho de efeito foi classificado como ${effectClass}, sugerindo impacto ${impactText}.`
+    : `Não se observou diferença estatisticamente significativa entre as médias de ${labels[0]} e ${labels[1]}. Ainda assim, ${higherGroup} apresentou média numericamente maior, com diferença média de ${utils.fmtNumber(diffAbs, 2)} unidades. O tamanho de efeito foi ${effectClass}, sugerindo impacto ${impactText}.`;
+
+  return `
+    ${utils.buildInterpretationCard('Interpretação automática', paragraph, [
+      `Pergunta analisada: ${question || 'Comparação entre duas médias independentes'}.`,
+      `Resultado principal: t = ${utils.fmtNumber(result.t, 3)}, gl = ${utils.fmtNumber(result.df, 2)}, p = ${utils.fmtP(result.p)}.`,
+      'Recomendação: reporte p-valor, IC95% e tamanho de efeito em conjunto para uma interpretação completa.'
+    ])}
+    <div class="result-card">
+      <h4>Leitura didática final</h4>
+      <ul>
+        <li>Grupo com maior média: <strong>${utils.escapeHtml(higherGroup)}</strong>.</li>
+        <li>Diferença observada: <strong>${utils.fmtSigned(result.diff, 2)}</strong> unidades.</li>
+        <li>Classificação do efeito (Cohen&apos;s d): <strong>${utils.escapeHtml(effectClass)}</strong>.</li>
+      </ul>
+    </div>
+  `;
+}
+
+function buildDatasusInterpretation(result, derived, alpha, question, utils) {
+  const significant = result.p < alpha;
+  const effectClass = classifyEffect(result.d);
+  const higherGroup = result.diff >= 0 ? 'Grupo A' : 'Grupo B';
+  const paragraph = significant
+    ? `Após resumir os valores de cada região no período selecionado e comparar os grupos definidos pelo usuário, observou-se diferença estatisticamente significativa entre Grupo A e Grupo B. A média foi maior em ${higherGroup}, sugerindo que, no conjunto de regiões selecionadas, os valores resumidos foram mais elevados nesse grupo.`
+    : `Após resumir os valores de cada região no período selecionado e comparar os grupos definidos pelo usuário, não se observou diferença estatisticamente significativa entre Grupo A e Grupo B. Ainda assim, a média foi numericamente maior em ${higherGroup}, o que pode orientar leituras exploratórias do contraste.`;
+
+  return `
+    ${utils.buildInterpretationCard('Interpretação automática', paragraph, [
+      `Pergunta analisada: ${question || 'Comparação entre dois grupos de regiões'}.`,
+      `Período analisado: ${derived.periodLabel}.`,
+      `Grupo A: ${joinRegionList(derived.groupRegions.A)}.`,
+      `Grupo B: ${joinRegionList(derived.groupRegions.B)}.`,
+      'Resumo utilizado: média por região dentro do período selecionado, mantendo cada região como uma observação separada.',
+      `Resultado principal: t = ${utils.fmtNumber(result.t, 3)}, gl = ${utils.fmtNumber(result.df, 2)}, p = ${utils.fmtP(result.p)}.`,
+      `Tamanho de efeito: ${utils.escapeHtml(effectClass)}.`
+    ])}
+  `;
+}
+
+export async function renderTestModule(ctx) {
+  const { root, config, utils, stats } = ctx;
+  root.classList.add('tstudent-module');
+
+  root.innerHTML = `
+    <div class="module-grid">
+      <section class="module-header tstudent-header">
+        <div class="chip chip-primary">Módulo didático · comparação de médias</div>
+        <h3>${utils.escapeHtml(config.title)}</h3>
+        <p>${utils.escapeHtml(config.description)}</p>
+      </section>
+
+      <section class="callout-grid tstudent-cards">
+        ${(config.didacticCards || []).map(card => `
+          <article class="tip-card didactic-card">
+            <h4>${utils.escapeHtml(card.title)}</h4>
+            <p>${utils.escapeHtml(card.text)}</p>
+          </article>
+        `).join('')}
+      </section>
+
+      <section class="surface-card decorated">
+        <div class="tstudent-mode-switch" role="tablist" aria-label="Modo de entrada do teste t">
+          <button type="button" class="tstudent-mode-btn active" data-mode-target="manual" aria-selected="true">Modo manual</button>
+          <button type="button" class="tstudent-mode-btn" data-mode-target="datasus" aria-selected="false">Importar CSV DATASUS</button>
+        </div>
+        <p class="small-note" style="margin:12px 0 0;">Os dois fluxos coexistem no mesmo módulo. O modo manual segue disponível sem alterações no comportamento estatístico.</p>
+      </section>
+
+      <div id="t-manual-panel" class="tstudent-mode-panel active" data-mode-panel="manual">
+        <section class="surface-card decorated">
+          <h4>Entrada manual de dados</h4>
+          <div class="form-grid two">
+            <div>
+              <label for="t-context">Pergunta do estudo</label>
+              <input id="t-context" type="text" value="${utils.escapeHtml(config.defaultQuestion || 'As médias dos grupos são diferentes?')}" />
+            </div>
+            <div>
+              <label for="t-alpha">Nível de significância</label>
+              <select id="t-alpha">
+                <option value="0.01">1%</option>
+                <option value="0.05" selected>5%</option>
+                <option value="0.10">10%</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:14px;">
+            <label for="t-paste">Cole seus dados</label>
+            <textarea id="t-paste" placeholder="Grupo A\tGrupo B&#10;4,8\t6,1&#10;5,1\t5,8&#10;..."></textarea>
+            <div class="small-note">Formatos aceitos: duas colunas numéricas (Grupo 1 e Grupo 2) ou coluna de grupo + coluna numérica (ex.: Controle;5,2).</div>
+          </div>
+          <div class="actions-row" style="margin-top:14px;">
+            <button class="btn-secondary" id="t-example">Carregar exemplo</button>
+            <button class="btn" id="t-run">Rodar análise</button>
+            <button class="btn-ghost" id="t-clear">Limpar</button>
+          </div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Pré-visualização</h4>
+          <div id="t-preview" class="small-note">Nenhum dado carregado ainda.</div>
+          <div id="t-group-summary" class="metrics-grid t-group-summary" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Resultados e interpretação</h4>
+          <div id="t-status" class="status-bar">Carregue um exemplo ou cole os dados para iniciar.</div>
+          <div id="t-metrics" class="metrics-grid" style="margin-top:14px;"></div>
+          <div id="t-chart" class="chart-grid" style="margin-top:14px;"></div>
+          <div id="t-results" class="result-grid" style="margin-top:14px;"></div>
+        </section>
+      </div>
+
+      <div id="t-datasus-panel" class="tstudent-mode-panel" data-mode-panel="datasus">
+        <section class="surface-card decorated">
+          <h4>Importar CSV DATASUS</h4>
+          <div class="form-grid two">
+            <div>
+              <label for="t-datasus-context">Pergunta do estudo</label>
+              <input id="t-datasus-context" type="text" value="${utils.escapeHtml(config.defaultDatasusQuestion || 'Os grupos de regiões definidos pelo usuário apresentam médias diferentes?')}" />
+            </div>
+            <div>
+              <label for="t-datasus-alpha">Nível de significância</label>
+              <select id="t-datasus-alpha">
+                <option value="0.01">1%</option>
+                <option value="0.05" selected>5%</option>
+                <option value="0.10">10%</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-grid two" style="margin-top:14px;">
+            <div>
+              <label for="t-datasus-file">Arquivo DATASUS</label>
+              <input id="t-datasus-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" />
+              <div class="small-note">Formatos aceitos: .csv, .tsv e .txt exportados do DATASUS. O parser tenta, nesta ordem, ;, tab e vírgula.</div>
+            </div>
+            <div class="tstudent-inline-actions">
+              <button class="btn-secondary" id="t-datasus-example" type="button">Carregar exemplo DATASUS</button>
+              <button class="btn" id="t-datasus-run" type="button">Rodar t test</button>
+              <button class="btn-ghost" id="t-datasus-clear" type="button">Limpar tudo</button>
+            </div>
+          </div>
+          <div id="t-datasus-status-card" style="margin-top:16px;" class="status-bar">Faça upload de um arquivo DATASUS para habilitar a seleção de grupos e período.</div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Pré-visualização da base bruta importada</h4>
+          <div id="t-datasus-preview" class="small-note">Nenhuma base importada ainda.</div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Painel de configuração da comparação</h4>
+          <div id="t-datasus-controls" class="small-note">A configuração ficará disponível após a leitura bem-sucedida do arquivo.</div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Base derivada usada no t test</h4>
+          <div id="t-datasus-derived" class="small-note">Selecione regiões e período para montar a base derivada.</div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Resultados do t test</h4>
+          <div id="t-datasus-result-status" class="status-bar">Aguardando importação de arquivo.</div>
+          <div id="t-datasus-metrics" class="metrics-grid" style="margin-top:14px;"></div>
+          <div id="t-datasus-chart" class="chart-grid" style="margin-top:14px;"></div>
+          <div id="t-datasus-results" class="result-grid" style="margin-top:14px;"></div>
+        </section>
+      </div>
+    </div>
+  `;
+
+  const manual = {
+    pasteEl: root.querySelector('#t-paste'),
+    previewEl: root.querySelector('#t-preview'),
+    statusEl: root.querySelector('#t-status'),
+    groupSummaryEl: root.querySelector('#t-group-summary'),
+    metricsEl: root.querySelector('#t-metrics'),
+    chartEl: root.querySelector('#t-chart'),
+    resultsEl: root.querySelector('#t-results'),
+    contextEl: root.querySelector('#t-context'),
+    alphaEl: root.querySelector('#t-alpha')
+  };
+
+  const datasusRefs = {
+    fileEl: root.querySelector('#t-datasus-file'),
+    contextEl: root.querySelector('#t-datasus-context'),
+    alphaEl: root.querySelector('#t-datasus-alpha'),
+    statusCardEl: root.querySelector('#t-datasus-status-card'),
+    previewEl: root.querySelector('#t-datasus-preview'),
+    controlsEl: root.querySelector('#t-datasus-controls'),
+    derivedEl: root.querySelector('#t-datasus-derived'),
+    resultStatusEl: root.querySelector('#t-datasus-result-status'),
+    metricsEl: root.querySelector('#t-datasus-metrics'),
+    chartEl: root.querySelector('#t-datasus-chart'),
+    resultsEl: root.querySelector('#t-datasus-results')
+  };
+
+  const datasusState = {
+    fileName: '',
+    sourceText: '',
+    parsed: null,
+    blocks: [],
+    selectionMap: {},
+    showTotal: false,
+    periodMode: 'range',
+    singleYear: '',
+    rangeStart: '',
+    rangeEnd: '',
+    blockKey: '',
+    derived: null,
+    result: null,
+    error: ''
+  };
