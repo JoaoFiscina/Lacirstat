@@ -621,7 +621,7 @@ function renderResultBlock(result) {
     ["t", formatNumber(result.t)],
     ["gl", formatNumber(result.df)],
     ["p-valor", formatPValue(result.pValue)],
-    ["IC95%", `${formatNumber(result.ciLow)} a ${formatNumber(result.ciHigh)}`],
+    [result.confidenceLabel || "IC95%", `${formatNumber(result.ciLow)} a ${formatNumber(result.ciHigh)}`],
     ["Tamanho de efeito", result.effectSize == null ? "NA" : formatNumber(result.effectSize)]
   ];
 
@@ -1238,8 +1238,8 @@ function runDatasusMode(datasus) {
   );
 }
 
-function buildManualInterpretation(stats, labelA, labelB) {
-  const significance = stats.pValue < 0.05
+function buildManualInterpretation(stats, labelA, labelB, studyQuestion, alpha) {
+  const significance = stats.pValue < alpha
     ? "observou-se diferenca estatisticamente significativa"
     : "nao se observou diferenca estatisticamente significativa";
   const direction = stats.meanDifference > 0
@@ -1248,7 +1248,7 @@ function buildManualInterpretation(stats, labelA, labelB) {
       ? `${labelB} apresentou media maior`
       : "os dois grupos apresentaram medias equivalentes";
 
-  return `Com base nos valores informados manualmente, ${significance} entre ${labelA} e ${labelB}. ${direction}.`;
+  return `${studyQuestion || "Na comparacao entre os grupos"}, ${significance} entre ${labelA} e ${labelB} com nivel de significancia de ${PT_NUMBER.format(alpha * 100)}%. ${direction}.`;
 }
 
 function buildDatasusInterpretation(stats, derived) {
@@ -1265,6 +1265,7 @@ function buildDatasusInterpretation(stats, derived) {
 }
 
 function runWelchTTest(sampleA, sampleB, options) {
+  const alpha = Number(options.alpha) || 0.05;
   const nA = sampleA.length;
   const nB = sampleB.length;
   const meanA = mean(sampleA);
@@ -1287,7 +1288,7 @@ function runWelchTTest(sampleA, sampleB, options) {
   const denominator = (seTermA ** 2) / Math.max(nA - 1, 1) + (seTermB ** 2) / Math.max(nB - 1, 1);
   const df = numerator / denominator;
   const pValue = 2 * (1 - studentTCdf(Math.abs(t), df));
-  const critical = inverseStudentT(0.975, df);
+  const critical = inverseStudentT(1 - (alpha / 2), df);
   const effectSize = computeHedgesG(sampleA, sampleB, varianceA, varianceB);
 
   const stats = {
@@ -1306,7 +1307,9 @@ function runWelchTTest(sampleA, sampleB, options) {
     effectSize,
     labelA: options.labelA,
     labelB: options.labelB,
-    chartMax: Math.max(Math.abs(meanA), Math.abs(meanB), 1)
+    chartMax: Math.max(Math.abs(meanA), Math.abs(meanB), 1),
+    alpha,
+    confidenceLabel: `IC${Math.round((1 - alpha) * 100)}%`
   };
 
   return {
@@ -1524,6 +1527,19 @@ function createFiveYearBlocks(years) {
   }
 
   return blocks;
+}
+
+function buildManualExampleText(config) {
+  const groupA = Array.isArray(config?.example?.group1) ? config.example.group1 : [4.8, 5.1, 4.9, 5.0, 4.7];
+  const groupB = Array.isArray(config?.example?.group2) ? config.example.group2 : [6.1, 5.8, 6.0, 5.9, 6.2];
+  const rowCount = Math.max(groupA.length, groupB.length);
+  const lines = ["Grupo A\tGrupo B"];
+
+  for (let index = 0; index < rowCount; index += 1) {
+    lines.push(`${groupA[index] == null ? "" : formatExampleNumber(groupA[index])}\t${groupB[index] == null ? "" : formatExampleNumber(groupB[index])}`);
+  }
+
+  return lines.join("\n");
 }
 
 function buildDatasusExampleText() {
