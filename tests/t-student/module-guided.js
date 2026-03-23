@@ -1612,6 +1612,50 @@ export async function renderTestModule(ctx) {
     invalidateManualResults('Campos limpos. Cole novos dados ou leia um arquivo para continuar.');
   }
 
+  function setManualAnalysisMode(mode) {
+    if (!['independent', 'paired'].includes(mode)) return;
+    manualState.analysisMode = mode;
+    refreshManualPreview();
+    invalidateManualResults('Modo manual atualizado. Revise a base antes de rodar o teste.');
+  }
+
+  function setManualSource(source) {
+    if (source === 'file' && !manualState.fileState) return;
+    manualState.activeSource = source;
+    refreshManualPreview();
+    invalidateManualResults(source === 'file'
+      ? 'Fonte alterada para o arquivo lido. Revise a base antes de rodar o teste.'
+      : 'Fonte alterada para a entrada manual rapida. Revise a base antes de rodar o teste.');
+  }
+
+  function applyManualExample() {
+    const example = MANUAL_QUICK_EXAMPLES[manualState.analysisMode] || MANUAL_QUICK_EXAMPLES.independent;
+    manual.groupAEl.value = example.groupA;
+    manual.groupBEl.value = example.groupB;
+    manual.unitsEl.value = example.units;
+    manual.fileEl.value = '';
+    manualState.fileState = null;
+    manualState.activeSource = 'quick';
+    refreshManualPreview();
+    invalidateManualResults('Exemplo aplicado. Revise a base e clique em "Rodar teste".');
+  }
+
+  async function handleManualFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    manual.fileStatusEl.className = 'status-bar';
+    manual.fileStatusEl.textContent = 'Lendo arquivo selecionado...';
+    manual.fileRecognitionEl.innerHTML = '';
+
+    manualState.fileState = await readManualFileState(file, utils, stats);
+    manualState.activeSource = 'file';
+    refreshManualPreview();
+    invalidateManualResults(manualState.fileState.status === 'loaded'
+      ? 'Arquivo lido. Revise a previa e clique em "Rodar teste".'
+      : 'Houve um problema na leitura do arquivo. Confira a mensagem acima.');
+  }
+
   function currentDatasusSession() {
     if (datasusState.session?.confirmedSources?.length) return datasusState.session;
     if (datasusState.sharedSession?.confirmedSources?.length) return datasusState.sharedSession;
@@ -2207,20 +2251,34 @@ export async function renderTestModule(ctx) {
     });
   });
 
-  root.querySelector('#t-example').addEventListener('click', () => {
-    manual.pasteEl.value = config.exampleText || '';
-    runManualAnalysis();
+  manual.modeButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      setManualAnalysisMode(button.dataset.manualAnalysis);
+    });
   });
+  manual.sourceButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      setManualSource(button.dataset.manualSource);
+    });
+  });
+  root.querySelector('#t-example').addEventListener('click', applyManualExample);
   root.querySelector('#t-run').addEventListener('click', runManualAnalysis);
   root.querySelector('#t-clear').addEventListener('click', clearManual);
-  manual.pasteEl.addEventListener('input', refreshManualPreview);
+  [manual.groupAEl, manual.groupBEl, manual.unitsEl].forEach(input => {
+    input.addEventListener('input', () => {
+      manualState.activeSource = 'quick';
+      refreshManualPreview();
+      invalidateManualResults('Entrada manual atualizada. Revise a base antes de rodar o teste.');
+    });
+  });
+  manual.fileEl.addEventListener('change', handleManualFile);
 
   datasusRefs.contextEl.addEventListener('input', () => invalidateDatasusResults('Texto interpretativo atualizado. Rode novamente para refletir a nova pergunta.'));
   datasusRefs.alphaEl.addEventListener('change', () => invalidateDatasusResults('Nivel de significancia atualizado. Rode novamente para recalcular a leitura final.'));
   datasusRefs.runBtn.addEventListener('click', runDatasusAnalysis);
 
-  manual.pasteEl.value = config.exampleText || '';
-  runManualAnalysis();
+  refreshManualPreview();
+  invalidateManualResults('Cole os dados ou leia um arquivo no formato padrao para iniciar.');
   mountWizard();
   renderDatasusAnalysis();
   renderDatasusSelection();
