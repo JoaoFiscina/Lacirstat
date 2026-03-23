@@ -595,6 +595,9 @@ export async function renderTestModule(ctx) {
   });
 
   els.paste.addEventListener('input', refreshPreview);
+  mountDatasusWizard();
+  renderDatasusControls();
+  renderDatasusPreview();
 
   els.paste.value = exampleText;
   refreshPreview();

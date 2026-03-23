@@ -19,6 +19,7 @@ const TYPE_OPTIONS = [
 ];
 
 function clonePlain(value) {
+  if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
 }
 
