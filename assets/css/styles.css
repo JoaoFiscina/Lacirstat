@@ -642,6 +642,49 @@ input[type="file"] {
 .tstudent-module .tstudent-mode-panel.active {
   display: grid;
 }
+.tstudent-module .tstudent-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+.tstudent-module .tstudent-step-head h4 {
+  margin: 0;
+}
+.tstudent-module .tstudent-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.tstudent-module .tstudent-choice-card {
+  border: 1px solid rgba(206, 220, 238, 0.95);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  padding: 18px;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  transition: .18s ease;
+}
+.tstudent-module .tstudent-choice-card strong {
+  font-size: 1rem;
+}
+.tstudent-module .tstudent-choice-card span {
+  color: var(--muted);
+  line-height: 1.55;
+}
+.tstudent-module .tstudent-choice-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+  border-color: rgba(20,184,166,0.35);
+}
+.tstudent-module .tstudent-choice-card.is-active {
+  border-color: rgba(15,118,110,0.55);
+  background: linear-gradient(180deg, rgba(20,184,166,0.12) 0%, rgba(255,255,255,0.98) 100%);
+  box-shadow: var(--shadow-soft);
+}
 .tstudent-module .tstudent-inline-actions {
   display: grid;
   gap: 10px;
@@ -848,6 +891,17 @@ input[type="file"] {
   gap: 6px;
   min-width: 0;
 }
+.tstudent-module .tstudent-dataset-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.tstudent-module .tstudent-dataset-card {
+  border-color: rgba(216, 226, 240, 0.95);
+}
+.tstudent-module .tstudent-dataset-card p {
+  margin: 8px 0 6px;
+}
 .tstudent-module .tstudent-file-name {
   display: block;
   max-width: 100%;
@@ -893,6 +947,10 @@ input[type="file"] {
 }
 
 @media (max-width: 980px) {
+  .tstudent-module .tstudent-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
   .tstudent-module .tstudent-group-picker-head,
   .tstudent-module .tstudent-group-row {
     grid-template-columns: minmax(0, 1fr) 72px 72px;

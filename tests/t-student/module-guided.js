@@ -717,10 +717,12 @@ export async function renderTestModule(ctx) {
 
     const independentEntry = getActiveIndependentEntry();
     const independentSelection = independentEntry ? getDatasusSelectionMap(independentEntry.id) : {};
-    const selectedIndependentGroups = Object.values(independentSelection).filter(Boolean);
+    const independentGroups = Object.values(independentSelection).filter(Boolean);
+    const hasIndependentA = independentGroups.includes('A');
+    const hasIndependentB = independentGroups.includes('B');
     const suggestionMessage = datasusState.suggestedMode === 'paired' && datasusState.suggestedPair
       ? `Isso parece um cen\u00e1rio pareado: ${datasusState.suggestedPair.commonCount} unidades aparecem em dois arquivos compat\u00edveis.`
-      : selectedIndependentGroups.length >= 2
+      : hasIndependentA && hasIndependentB
         ? 'Isso parece compara\u00e7\u00e3o entre grupos independentes, porque as categorias selecionadas formam grupos distintos.'
         : 'Sem pares fortes detectados, o assistente sugere come\u00e7ar pela compara\u00e7\u00e3o entre grupos independentes.';
 
@@ -761,4 +763,526 @@ export async function renderTestModule(ctx) {
       });
     });
   }
+
+  function renderDatasusSelectionStep() {
+    if (!datasusState.library.length) {
+      datasusRefs.selectionEl.innerHTML = '<div class="small-note">Escolha o cen\u00e1rio de an\u00e1lise para liberar as sele\u00e7\u00f5es guiadas.</div>';
+      return;
+    }
+
+    const { years, blocks } = ensurePeriodState();
+
+    if (datasusState.analysisMode === 'paired') {
+      const { leftEntry, rightEntry } = getActivePairedEntries();
+      const overlap = getDatasusPairOverlap(leftEntry, rightEntry);
+      const unitLabel = leftEntry?.parsed?.dimensionLabel || rightEntry?.parsed?.dimensionLabel || 'Unidade';
+      const overlapMessage = leftEntry && rightEntry
+        ? overlap.commonCount >= 2
+          ? `Isso parece um cen\u00e1rio pareado: ${overlap.commonCount} ${unitLabel.toLowerCase()} aparecem nos dois procedimentos selecionados.`
+          : 'Selecione dois arquivos com unidades em comum para montar a compara\u00e7\u00e3o pareada.'
+        : 'Selecione os dois procedimentos a serem comparados.';
+
+      datasusRefs.selectionEl.innerHTML = `
+        <div class="${overlap.commonCount >= 2 ? 'success-box' : 'status-bar'}">${utils.escapeHtml(overlapMessage)}</div>
+        <div class="form-grid two" style="margin-top:14px;">
+          <div>
+            <label for="t-datasus-proc-a">Procedimento A</label>
+            <select id="t-datasus-proc-a">
+              ${datasusState.library.map(entry => `<option value="${utils.escapeHtml(entry.id)}"${entry.id === datasusState.pairedLeftId ? ' selected' : ''}>${utils.escapeHtml(entry.procedureLabel)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label for="t-datasus-proc-b">Procedimento B</label>
+            <select id="t-datasus-proc-b">
+              ${datasusState.library.map(entry => `<option value="${utils.escapeHtml(entry.id)}"${entry.id === datasusState.pairedRightId ? ' selected' : ''}>${utils.escapeHtml(entry.procedureLabel)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="small-note" style="margin-top:12px;">O sistema monta automaticamente a tabela <strong>${utils.escapeHtml(unitLabel)}</strong> \u2192 Procedimento A \u00d7 Procedimento B e mant\u00e9m apenas unidades com os dois valores no per\u00edodo escolhido.</div>
+        ${buildPeriodControlsHtml(years, blocks)}
+        <div class="metrics-grid" style="margin-top:14px;">
+          <div class="metric-card">
+            <div class="metric-label">Unidades em comum</div>
+            <div class="metric-value">${overlap.commonCount}</div>
+            <div class="metric-mini">M\u00ednimo recomendado: 2 pares v\u00e1lidos</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Anos compartilhados</div>
+            <div class="metric-value">${overlap.sharedYears.length}</div>
+            <div class="metric-mini">${overlap.sharedYears.length ? utils.escapeHtml(overlap.sharedYears.join(', ')) : 'nenhum ano simult\u00e2neo detectado'}</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Teste sugerido</div>
+            <div class="metric-value">t pareado</div>
+            <div class="metric-mini">Cada unidade contribui com dois valores.</div>
+          </div>
+        </div>
+      `;
+
+      datasusRefs.selectionEl.querySelector('#t-datasus-proc-a')?.addEventListener('change', event => {
+        datasusState.pairedLeftId = event.target.value;
+        ensurePeriodState();
+        renderDatasusImportStatus();
+        renderDatasusSelectionStep();
+        renderDatasusPreview();
+        renderDatasusDerived();
+        invalidateDatasusRun();
+      });
+
+      datasusRefs.selectionEl.querySelector('#t-datasus-proc-b')?.addEventListener('change', event => {
+        datasusState.pairedRightId = event.target.value;
+        ensurePeriodState();
+        renderDatasusImportStatus();
+        renderDatasusSelectionStep();
+        renderDatasusPreview();
+        renderDatasusDerived();
+        invalidateDatasusRun();
+      });
+
+      attachPeriodControlEvents();
+      return;
+    }
+
+    const activeEntry = getActiveIndependentEntry();
+    if (!activeEntry) {
+      datasusRefs.selectionEl.innerHTML = '<div class="error-box">N\u00e3o foi poss\u00edvel identificar um arquivo ativo para compara\u00e7\u00e3o entre grupos.</div>';
+      return;
+    }
+
+    const selectionMap = getDatasusSelectionMap(activeEntry.id);
+    const visibleRows = activeEntry.parsed.parsedRows.filter(row => getDatasusShowTotal(activeEntry.id) || !row.isTotalRow);
+    const selectedA = visibleRows.filter(row => selectionMap[row.id] === 'A').length;
+    const selectedB = visibleRows.filter(row => selectionMap[row.id] === 'B').length;
+    const independentMessage = selectedA > 0 && selectedB > 0
+      ? 'Isso parece compara\u00e7\u00e3o entre grupos independentes: as categorias marcadas est\u00e3o em grupos distintos.'
+      : 'Selecione as categorias que formar\u00e3o Grupo A e Grupo B.';
+
+    datasusRefs.selectionEl.innerHTML = `
+      <div class="${selectedA > 0 && selectedB > 0 ? 'success-box' : 'status-bar'}">${utils.escapeHtml(independentMessage)}</div>
+      <div class="form-grid two" style="margin-top:14px;">
+        <div>
+          <label for="t-datasus-active-dataset">Arquivo base</label>
+          <select id="t-datasus-active-dataset">
+            ${datasusState.library.map(entry => `<option value="${utils.escapeHtml(entry.id)}"${entry.id === activeEntry.id ? ' selected' : ''}>${utils.escapeHtml(entry.procedureLabel)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label>Resumo r\u00e1pido</label>
+          <div class="tstudent-config-summary">
+            <span class="small-chip info">Grupo A: ${selectedA}</span>
+            <span class="small-chip primary">Grupo B: ${selectedB}</span>
+            <span class="small-chip ${getDatasusShowTotal(activeEntry.id) ? 'warning' : 'info'}">Linha Total ${getDatasusShowTotal(activeEntry.id) ? 'vis\u00edvel' : 'oculta'}</span>
+          </div>
+        </div>
+      </div>
+      ${buildPeriodControlsHtml(years, blocks)}
+      <label class="tstudent-toggle">
+        <input id="t-datasus-show-total" type="checkbox"${getDatasusShowTotal(activeEntry.id) ? ' checked' : ''} />
+        <span>Mostrar linha "Total" como op\u00e7\u00e3o avan\u00e7ada</span>
+      </label>
+      <div class="small-note" style="margin-top:12px;">Marque quais categorias entrar\u00e3o em cada grupo. Cada categoria selecionada vira uma observa\u00e7\u00e3o ap\u00f3s o resumo do per\u00edodo.</div>
+      <div class="tstudent-group-picker">
+        <div class="tstudent-group-picker-head">
+          <div>${utils.escapeHtml(activeEntry.parsed.dimensionLabel)}</div>
+          <div>Grupo A</div>
+          <div>Grupo B</div>
+        </div>
+        ${visibleRows.map(row => {
+          const selectedGroup = selectionMap[row.id] || '';
+          const rawNote = row.cleanLabel !== row.rowLabel ? `<div class="small-note" title="${utils.escapeHtml(row.rowLabel)}">Original: ${utils.escapeHtml(row.rowLabel)}</div>` : '';
+          return `
+            <div class="tstudent-group-row ${row.isTotalRow ? 'is-total-row' : ''}">
+              <div>
+                <strong>${utils.escapeHtml(row.cleanLabel)}</strong>
+                ${rawNote}
+              </div>
+              <label class="tstudent-checkbox-cell">
+                <input type="checkbox" data-role="datasus-checkbox" data-row-id="${utils.escapeHtml(row.id)}" data-group="A"${selectedGroup === 'A' ? ' checked' : ''} />
+              </label>
+              <label class="tstudent-checkbox-cell">
+                <input type="checkbox" data-role="datasus-checkbox" data-row-id="${utils.escapeHtml(row.id)}" data-group="B"${selectedGroup === 'B' ? ' checked' : ''} />
+              </label>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-active-dataset')?.addEventListener('change', event => {
+      datasusState.activeDatasetId = event.target.value;
+      ensurePeriodState();
+      renderDatasusImportStatus();
+      renderDatasusAnalysisStep();
+      renderDatasusSelectionStep();
+      renderDatasusPreview();
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-show-total')?.addEventListener('change', event => {
+      datasusState.showTotalByDataset[activeEntry.id] = event.target.checked;
+      renderDatasusSelectionStep();
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    datasusRefs.selectionEl.querySelectorAll('input[data-role="datasus-checkbox"]').forEach(input => {
+      input.addEventListener('change', event => {
+        const rowId = event.target.dataset.rowId;
+        const group = event.target.dataset.group;
+        const checked = event.target.checked;
+        const map = getDatasusSelectionMap(activeEntry.id);
+
+        if (checked) {
+          map[rowId] = group;
+        } else if (map[rowId] === group) {
+          map[rowId] = null;
+        }
+
+        renderDatasusAnalysisStep();
+        renderDatasusSelectionStep();
+        renderDatasusDerived();
+        invalidateDatasusRun();
+      });
+    });
+
+    attachPeriodControlEvents();
+  }
+
+  function renderDatasusPreview() {
+    if (!datasusState.library.length) {
+      datasusRefs.previewEl.innerHTML = '<div class="small-note">Nenhuma base importada ainda.</div>';
+      return;
+    }
+
+    const previewEntry = getCurrentPreviewEntry();
+    if (!previewEntry?.parsed) {
+      datasusRefs.previewEl.innerHTML = '<div class="error-box">N\u00e3o foi poss\u00edvel montar a pr\u00e9-visualiza\u00e7\u00e3o do arquivo selecionado.</div>';
+      return;
+    }
+
+    const previewCards = datasusState.analysisMode === 'paired'
+      ? (() => {
+          const { leftEntry, rightEntry } = getActivePairedEntries();
+          return [leftEntry, rightEntry].filter(Boolean).map(buildEntryCard).join('');
+        })()
+      : buildEntryCard(previewEntry);
+
+    const metadataNote = previewEntry.parsed.metadataLines.length
+      ? `<div class="small-note" style="margin-bottom:12px;">Metadados detectados: ${utils.escapeHtml(previewEntry.parsed.metadataLines.join(' | '))}</div>`
+      : '';
+
+    datasusRefs.previewEl.innerHTML = `
+      <div class="tstudent-dataset-list">
+        ${previewCards}
+      </div>
+      <div class="small-note" style="margin:14px 0 10px;">Base bruta usada como refer\u00eancia visual do assistente.</div>
+      ${metadataNote}
+      <div class="small-note" style="margin-bottom:10px;">Cabe\u00e7alho identificado automaticamente na linha ${previewEntry.parsed.headerRowIndex + 1}. A dimens\u00e3o principal detectada foi <strong>${utils.escapeHtml(previewEntry.parsed.dimensionLabel)}</strong>.</div>
+      ${utils.renderPreviewTable(previewEntry.parsed.previewHeaders, previewEntry.parsed.previewRows, 8)}
+    `;
+  }
+
+  function renderDatasusDerived() {
+    if (!datasusState.library.length) {
+      datasusState.derived = null;
+      datasusRefs.derivedEl.innerHTML = '<div class="small-note">Selecione o tipo de compara\u00e7\u00e3o para montar a base derivada.</div>';
+      updateDatasusRunAvailability();
+      return;
+    }
+
+    const derived = getDerivedDatasusState();
+    datasusState.derived = derived;
+
+    const validationBox = derived.validationErrors.length
+      ? `
+        <div class="error-box" style="margin-bottom:14px;">
+          <strong>Base derivada ainda inv\u00e1lida.</strong>
+          <ul class="tstudent-inline-list">${derived.validationErrors.map(message => `<li>${utils.escapeHtml(message)}</li>`).join('')}</ul>
+        </div>
+      `
+      : `<div class="success-box" style="margin-bottom:14px;">${utils.escapeHtml(derived.explanation || 'Base derivada v\u00e1lida.')}</div>`;
+
+    if (derived.mode === 'paired') {
+      const tableRows = derived.derivedRows.map(row => [
+        row.rowLabel,
+        utils.fmtNumber(row.valueA, 3),
+        utils.fmtNumber(row.valueB, 3),
+        utils.fmtSigned(row.diff, 3),
+        row.validYears.join(', ')
+      ]);
+      const omittedHtml = derived.omittedRows.length
+        ? `<div class="small-note" style="margin-top:12px;">Unidades omitidas por falta de pares completos: ${utils.escapeHtml(derived.omittedRows.map(item => item.rowLabel).join(', '))}.</div>`
+        : '';
+
+      datasusRefs.derivedEl.innerHTML = `
+        ${validationBox}
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-label">Per\u00edodo analisado</div>
+            <div class="metric-value tstudent-compact-value">${utils.escapeHtml(derived.periodLabel || 'sem per\u00edodo v\u00e1lido')}</div>
+            <div class="metric-mini">Anos usados: ${derived.selectedYears.length ? utils.escapeHtml(derived.selectedYears.join(', ')) : 'nenhum'}</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Pares v\u00e1lidos</div>
+            <div class="metric-value">${derived.validCounts.pairs}</div>
+            <div class="metric-mini">Unidades em comum detectadas: ${derived.selectionCounts.A}</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Unidades omitidas</div>
+            <div class="metric-value">${derived.omittedRows.length}</div>
+            <div class="metric-mini">Mantidas apenas unidades com os dois valores.</div>
+          </div>
+        </div>
+        <div class="tstudent-derived-groups">
+          <article class="mini-card">
+            <h4>Grupo A</h4>
+            <p>${utils.escapeHtml(derived.groupLabels[0] || 'Procedimento A')}</p>
+          </article>
+          <article class="mini-card">
+            <h4>Grupo B</h4>
+            <p>${utils.escapeHtml(derived.groupLabels[1] || 'Procedimento B')}</p>
+          </article>
+        </div>
+        <div class="small-note" style="margin:14px 0 10px;">Diferen\u00e7a por unidade: cada linha abaixo corresponde ao par usado no teste.</div>
+        ${utils.renderPreviewTable([derived.unitLabel, derived.groupLabels[0], derived.groupLabels[1], 'Diferen\u00e7a', 'Anos usados'], tableRows, 20)}
+        ${omittedHtml}
+      `;
+
+      updateDatasusRunAvailability();
+      return;
+    }
+
+    const groupList = groupKey => {
+      const rows = derived.derivedRows.filter(row => row.groupKey === groupKey);
+      if (!rows.length) return '<div class="small-note">Nenhuma observa\u00e7\u00e3o v\u00e1lida neste grupo.</div>';
+      return `
+        <ul class="tstudent-derived-list">
+          ${rows.map(row => `
+            <li>
+              <span title="${utils.escapeHtml(row.rowLabel)}">
+                <strong>${utils.escapeHtml(row.rowLabel)}</strong>
+                <small>Anos usados: ${utils.escapeHtml(row.validYears.join(', '))}</small>
+              </span>
+              <strong class="tstudent-derived-value">${utils.fmtNumber(row.value, 2)}</strong>
+            </li>
+          `).join('')}
+        </ul>
+      `;
+    };
+
+    const tableRows = derived.derivedRows.map(row => [
+      row.rowLabel,
+      row.groupLabel,
+      utils.fmtNumber(row.value, 3),
+      row.validYears.join(', ')
+    ]);
+    const omittedHtml = derived.omittedRows.length
+      ? `<div class="small-note" style="margin-top:12px;">Categorias sem valores aproveit\u00e1veis no per\u00edodo atual: ${utils.escapeHtml(derived.omittedRows.map(item => item.rowLabel).join(', '))}.</div>`
+      : '';
+
+    datasusRefs.derivedEl.innerHTML = `
+      ${validationBox}
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Per\u00edodo analisado</div>
+          <div class="metric-value tstudent-compact-value">${utils.escapeHtml(derived.periodLabel || 'sem per\u00edodo v\u00e1lido')}</div>
+          <div class="metric-mini">Anos usados: ${derived.selectedYears.length ? utils.escapeHtml(derived.selectedYears.join(', ')) : 'nenhum'}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Observa\u00e7\u00f5es v\u00e1lidas no Grupo A</div>
+          <div class="metric-value">${derived.validCounts.A}</div>
+          <div class="metric-mini">Linhas atribu\u00eddas: ${derived.selectionCounts.A}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Observa\u00e7\u00f5es v\u00e1lidas no Grupo B</div>
+          <div class="metric-value">${derived.validCounts.B}</div>
+          <div class="metric-mini">Linhas atribu\u00eddas: ${derived.selectionCounts.B}</div>
+        </div>
+      </div>
+      <div class="tstudent-derived-groups">
+        <article class="mini-card">
+          <h4>Grupo A</h4>
+          ${groupList('A')}
+        </article>
+        <article class="mini-card">
+          <h4>Grupo B</h4>
+          ${groupList('B')}
+        </article>
+      </div>
+      <div class="small-note" style="margin:14px 0 10px;">Resumo utilizado: m\u00e9dia dos anos selecionados dentro de cada categoria, mantendo cada categoria como uma observa\u00e7\u00e3o separada.</div>
+      ${utils.renderPreviewTable([derived.unitLabel, 'Grupo', 'Valor resumido', 'Anos usados'], tableRows, 20)}
+      ${omittedHtml}
+    `;
+
+    updateDatasusRunAvailability();
+  }
+
+  function renderDatasusWorkflow() {
+    ensurePeriodState();
+    renderDatasusImportStatus();
+    renderDatasusAnalysisStep();
+    renderDatasusSelectionStep();
+    renderDatasusPreview();
+    renderDatasusDerived();
+  }
+
+  function hydrateDatasusSources(sources, readIssues = []) {
+    resetDatasusImportedState();
+    datasusRefs.fileEl.value = '';
+
+    const builtEntries = sources.map(buildDatasusEntry);
+    datasusState.importIssues = [
+      ...readIssues,
+      ...builtEntries.filter(entry => !entry.ok).map(entry => ({
+        fileName: entry.fileName,
+        message: entry.message
+      }))
+    ];
+    datasusState.library = builtEntries.filter(entry => entry.ok);
+
+    if (!datasusState.library.length) {
+      datasusState.error = datasusState.importIssues[0]?.message || 'N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.';
+      renderDatasusWorkflow();
+      renderDatasusResultState(datasusState.error, 'error');
+      return;
+    }
+
+    datasusState.selectionByDataset = Object.fromEntries(
+      datasusState.library.map(entry => [
+        entry.id,
+        Object.fromEntries(entry.parsed.parsedRows.map(row => [row.id, null]))
+      ])
+    );
+    datasusState.showTotalByDataset = Object.fromEntries(datasusState.library.map(entry => [entry.id, false]));
+    datasusState.activeDatasetId = datasusState.library[0].id;
+
+    datasusState.suggestedPair = findBestPairedSuggestion(datasusState.library);
+    datasusState.suggestedMode = datasusState.suggestedPair ? 'paired' : 'independent';
+    datasusState.analysisMode = datasusState.suggestedMode || 'independent';
+
+    if (datasusState.suggestedPair) {
+      datasusState.pairedLeftId = datasusState.suggestedPair.leftId;
+      datasusState.pairedRightId = datasusState.suggestedPair.rightId;
+      datasusState.activeDatasetId = datasusState.suggestedPair.leftId;
+    } else {
+      datasusState.pairedLeftId = datasusState.library[0]?.id || '';
+      datasusState.pairedRightId = datasusState.library[1]?.id || datasusState.library[0]?.id || '';
+    }
+
+    ensurePeriodState();
+    renderDatasusWorkflow();
+    invalidateDatasusRun();
+    setActiveModePanel('datasus');
+  }
+
+  async function handleDatasusFile(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    renderDatasusResultState(files.length === 1 ? 'Lendo arquivo DATASUS selecionado...' : 'Lendo arquivos DATASUS selecionados...', 'status');
+    const loaded = await Promise.all(files.map(async file => {
+      try {
+        const text = await utils.readFileText(file);
+        return {
+          ok: true,
+          fileName: file.name,
+          text,
+          sourceKind: 'upload'
+        };
+      } catch {
+        return {
+          ok: false,
+          fileName: file.name,
+          message: 'N\u00e3o foi poss\u00edvel ler o arquivo selecionado.'
+        };
+      }
+    }));
+
+    const validSources = loaded.filter(item => item.ok).map(item => ({
+      fileName: item.fileName,
+      text: item.text,
+      sourceKind: item.sourceKind
+    }));
+    const readIssues = loaded.filter(item => !item.ok).map(item => ({
+      fileName: item.fileName,
+      message: item.message
+    }));
+
+    hydrateDatasusSources(validSources, readIssues);
+  }
+
+  function runDatasusAnalysis() {
+    if (!datasusState.library.length) {
+      renderDatasusResultState('N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.', 'error');
+      return;
+    }
+
+    const derived = getDerivedDatasusState();
+    datasusState.derived = derived;
+    renderDatasusDerived();
+
+    if (!derived.ok) {
+      renderDatasusResultState(derived.primaryError || 'N\u00e3o h\u00e1 dados suficientes para compara\u00e7\u00e3o.', 'error');
+      return;
+    }
+
+    const result = datasusState.analysisMode === 'paired'
+      ? safePaired(derived.vectors.A, derived.vectors.B, stats)
+      : safeWelch(derived.vectors.A, derived.vectors.B, stats);
+
+    if (!Number.isFinite(result.t) || !Number.isFinite(result.p)) {
+      renderDatasusResultState('N\u00e3o foi poss\u00edvel calcular o teste com a base derivada atual.', 'error');
+      return;
+    }
+
+    datasusState.result = result;
+    const alpha = Number(datasusRefs.alphaEl.value || 0.05);
+    const significant = result.p < alpha;
+
+    datasusRefs.resultStatusEl.className = significant ? 'success-box' : 'status-bar';
+    datasusRefs.resultStatusEl.textContent = buildGuidedDatasusStatusText(result, derived, alpha, utils);
+    datasusRefs.metricsEl.innerHTML = buildGuidedDatasusMetricsHtml(result, derived, utils);
+    datasusRefs.chartEl.innerHTML = buildResultChartsHtml(result, derived.groupLabels, derived.vectors.A, derived.vectors.B, stats, utils);
+    datasusRefs.resultsEl.innerHTML = buildGuidedDatasusInterpretation(result, derived, alpha, datasusRefs.contextEl.value || defaultDatasusQuestion, utils);
+    updateDatasusRunAvailability();
+  }
+
+  function clearDatasusAll() {
+    resetDatasusImportedState();
+    datasusRefs.fileEl.value = '';
+    datasusRefs.contextEl.value = defaultDatasusQuestion;
+    datasusRefs.alphaEl.value = '0.05';
+    renderDatasusWorkflow();
+    renderDatasusResultState('Campos DATASUS limpos. Importe um novo arquivo para continuar.', 'status');
+  }
+
+  root.querySelectorAll('.tstudent-mode-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      setActiveModePanel(button.dataset.modeTarget);
+    });
+  });
+
+  root.querySelector('#t-example').addEventListener('click', () => {
+    manual.pasteEl.value = config.exampleText || '';
+    runManualAnalysis();
+  });
+  root.querySelector('#t-run').addEventListener('click', runManualAnalysis);
+  root.querySelector('#t-clear').addEventListener('click', clearManual);
+  manual.pasteEl.addEventListener('input', refreshManualPreview);
+
+  datasusRefs.fileEl.addEventListener('change', handleDatasusFile);
+  datasusRefs.contextEl.addEventListener('input', invalidateDatasusRun);
+  datasusRefs.alphaEl.addEventListener('change', invalidateDatasusRun);
+  datasusRefs.exampleBtn.addEventListener('click', () => {
+    hydrateDatasusSources(getExampleDatasusSources());
+  });
+  datasusRefs.runBtn.addEventListener('click', runDatasusAnalysis);
+  datasusRefs.clearBtn.addEventListener('click', clearDatasusAll);
+
+  manual.pasteEl.value = config.exampleText || '';
+  runManualAnalysis();
+  renderDatasusWorkflow();
+  renderDatasusResultState('Aguardando base derivada v\u00e1lida.', 'status');
+  updateDatasusRunAvailability();
 }
