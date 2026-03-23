@@ -251,3 +251,304 @@ function inferMeasureLabel(metadataLines) {
   const descriptive = clean.find((line, index) => index > 0 && !line.includes(':'));
   return descriptive || clean.find(line => !line.includes(':')) || clean[0] || '';
 }
+
+function parseDatasusDataset(text, stats) {
+  const rawLines = String(text || '')
+    .split(/\r?\n/)
+    .map(line => line.replace(/\uFEFF/g, '').trimEnd());
+  const lines = rawLines.filter(line => line.trim() !== '');
+
+  if (!lines.length) {
+    return { ok: false, error: 'Nenhum conteúdo foi encontrado no arquivo informado.' };
+  }
+
+  const delimiters = [';', '\t', ','];
+  let detected = null;
+
+  for (const delimiter of delimiters) {
+    const rows = lines.map(line => splitDelimitedLine(line, delimiter));
+    const header = findDatasusHeader(rows);
+    if (header) {
+      detected = { delimiter, rows, header };
+      break;
+    }
+  }
+
+  if (!detected) {
+    return { ok: false, error: 'Não foi possível interpretar o arquivo DATASUS.' };
+  }
+
+  const { delimiter, rows, header } = detected;
+  const bodyRows = rows
+    .slice(header.rowIndex + 1)
+    .filter(row => row.some(cell => normalizeSpaces(cell) !== ''));
+  const maxCols = Math.max(rows[header.rowIndex].length, ...bodyRows.map(row => row.length), 0);
+  const previewHeaders = Array.from({ length: maxCols }, (_, index) => {
+    const cell = normalizeSpaces(rows[header.rowIndex][index]);
+    if (cell) return cell;
+    return index === header.regionIndex ? 'Região' : `Coluna ${index + 1}`;
+  });
+
+  const parsedRows = [];
+  let ignoredRows = 0;
+
+  bodyRows.forEach((rawRow, bodyIndex) => {
+    const row = Array.from({ length: maxCols }, (_, index) => normalizeSpaces(rawRow[index]));
+    const rawLabel = row[header.regionIndex] || row.find(cell => cell) || '';
+    const cleanLabel = cleanRegionLabel(rawLabel);
+    const isTotalRow = normalizeToken(cleanLabel) === 'total';
+    const valuesByYear = {};
+    let validCount = 0;
+
+    header.yearColumns.forEach(column => {
+      const value = stats.parseNumber(rawRow[column.index]);
+      if (value !== null) {
+        valuesByYear[column.year] = value;
+        validCount += 1;
+      }
+    });
+
+    const totalValue = header.totalIndex !== null ? stats.parseNumber(rawRow[header.totalIndex]) : null;
+
+    if (!rawLabel && validCount === 0 && totalValue === null) {
+      ignoredRows += 1;
+      return;
+    }
+
+    if (validCount === 0 && !isTotalRow) {
+      ignoredRows += 1;
+      return;
+    }
+
+    parsedRows.push({
+      id: `datasus-row-${parsedRows.length + 1}`,
+      rowLabel: rawLabel || `Linha ${header.rowIndex + bodyIndex + 2}`,
+      cleanLabel: cleanLabel || rawLabel || `Linha ${header.rowIndex + bodyIndex + 2}`,
+      isTotalRow,
+      valuesByYear,
+      totalValue,
+      valueCount: validCount,
+      rawCells: row
+    });
+  });
+
+  const years = header.yearColumns
+    .map(column => column.year)
+    .sort((a, b) => Number(a) - Number(b));
+  const selectableRows = parsedRows.filter(row => !row.isTotalRow);
+  const metadataLines = lines.slice(0, header.rowIndex).map(normalizeSpaces).filter(Boolean);
+  const measureLabel = inferMeasureLabel(metadataLines);
+
+  if (!years.length || !selectableRows.length) {
+    return { ok: false, error: 'Não foi possível interpretar o arquivo DATASUS.' };
+  }
+
+  return {
+    ok: true,
+    delimiter,
+    headerRowIndex: header.rowIndex,
+    regionIndex: header.regionIndex,
+    totalIndex: header.totalIndex,
+    yearColumns: header.yearColumns,
+    years,
+    previewHeaders,
+    previewRows: bodyRows.map(rawRow => Array.from({ length: maxCols }, (_, index) => normalizeSpaces(rawRow[index]))),
+    parsedRows,
+    selectableRows,
+    totalRows: parsedRows.filter(row => row.isTotalRow),
+    rawRowCount: bodyRows.length,
+    ignoredRows,
+    metadataLines,
+    titleLine: metadataLines[0] || '',
+    measureLabel
+  };
+}
+
+function buildDatasusBlocks(years) {
+  const numericYears = years
+    .map(year => Number(year))
+    .filter(year => Number.isFinite(year))
+    .sort((a, b) => a - b);
+  const blocks = [];
+
+  for (let index = 0; index < numericYears.length; index += 5) {
+    const chunk = numericYears.slice(index, index + 5);
+    if (!chunk.length) continue;
+    const incomplete = chunk.length < 5 || (chunk[chunk.length - 1] - chunk[0]) !== (chunk.length - 1);
+    blocks.push({
+      key: chunk.join('|'),
+      years: chunk.map(String),
+      label: `${chunk[0]}–${chunk[chunk.length - 1]}`,
+      incomplete
+    });
+  }
+
+  return blocks;
+}
+
+function getSelectedPeriodYears(state) {
+  if (!state.parsed) return [];
+  const years = state.parsed.years;
+
+  if (state.periodMode === 'single') {
+    return years.includes(state.singleYear) ? [state.singleYear] : [];
+  }
+
+  if (state.periodMode === 'block') {
+    const block = state.blocks.find(item => item.key === state.blockKey);
+    return block ? block.years : [];
+  }
+
+  const start = Number(state.rangeStart);
+  const end = Number(state.rangeEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+  const min = Math.min(start, end);
+  const max = Math.max(start, end);
+  return years.filter(year => {
+    const numericYear = Number(year);
+    return numericYear >= min && numericYear <= max;
+  });
+}
+
+function getPeriodLabel(state, selectedYears) {
+  if (!selectedYears.length) return 'sem período válido';
+
+  if (state.periodMode === 'single') {
+    return `ano ${selectedYears[0]}`;
+  }
+
+  if (state.periodMode === 'block') {
+    const block = state.blocks.find(item => item.key === state.blockKey);
+    if (!block) return `${selectedYears[0]}–${selectedYears[selectedYears.length - 1]}`;
+    return block.incomplete
+      ? `${block.label} (bloco automático incompleto)`
+      : `${block.label} (bloco automático de 5 anos)`;
+  }
+
+  return `${selectedYears[0]}–${selectedYears[selectedYears.length - 1]}`;
+}
+
+function joinRegionList(labels) {
+  if (!labels.length) return 'nenhuma região selecionada';
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(', ')} e ${labels[labels.length - 1]}`;
+}
+
+function deriveDatasusComparison(state, stats) {
+  if (!state.parsed) {
+    return {
+      ok: false,
+      primaryError: 'Não foi possível interpretar o arquivo DATASUS.',
+      validationErrors: ['Não foi possível interpretar o arquivo DATASUS.'],
+      selectedYears: [],
+      derivedRows: [],
+      vectors: { A: [], B: [] },
+      selectionCounts: { A: 0, B: 0 },
+      validCounts: { A: 0, B: 0 },
+      omittedRows: []
+    };
+  }
+
+  const selectedYears = getSelectedPeriodYears(state);
+  if (!selectedYears.length) {
+    return {
+      ok: false,
+      primaryError: 'Nenhum ano válido foi encontrado no intervalo selecionado.',
+      validationErrors: ['Nenhum ano válido foi encontrado no intervalo selecionado.'],
+      selectedYears: [],
+      derivedRows: [],
+      vectors: { A: [], B: [] },
+      selectionCounts: { A: 0, B: 0 },
+      validCounts: { A: 0, B: 0 },
+      omittedRows: []
+    };
+  }
+
+  const visibleRows = state.parsed.parsedRows.filter(row => state.showTotal || !row.isTotalRow);
+  const selectedRows = visibleRows
+    .map(row => ({ row, group: state.selectionMap[row.id] || null }))
+    .filter(item => item.group === 'A' || item.group === 'B');
+
+  const selectionCounts = {
+    A: selectedRows.filter(item => item.group === 'A').length,
+    B: selectedRows.filter(item => item.group === 'B').length
+  };
+
+  const validationErrors = [];
+  if (selectionCounts.A < 1 || selectionCounts.B < 1) {
+    validationErrors.push('Selecione pelo menos 1 região em cada grupo.');
+  }
+
+  const derivedRows = [];
+  const omittedRows = [];
+
+  selectedRows.forEach(item => {
+    const validYears = selectedYears.filter(year => Number.isFinite(item.row.valuesByYear[year]));
+    if (!validYears.length) {
+      omittedRows.push({
+        rowId: item.row.id,
+        rowLabel: item.row.cleanLabel,
+        groupKey: item.group,
+        reason: 'Sem valores numéricos no período selecionado.'
+      });
+      return;
+    }
+
+    const values = validYears.map(year => item.row.valuesByYear[year]);
+    const summaryValue = stats.mean(values);
+
+    if (!Number.isFinite(summaryValue)) {
+      omittedRows.push({
+        rowId: item.row.id,
+        rowLabel: item.row.cleanLabel,
+        groupKey: item.group,
+        reason: 'Resumo inválido após a filtragem.'
+      });
+      return;
+    }
+
+    derivedRows.push({
+      rowId: item.row.id,
+      rowLabel: item.row.cleanLabel,
+      rawLabel: item.row.rowLabel,
+      groupKey: item.group,
+      groupLabel: item.group === 'A' ? 'Grupo A' : 'Grupo B',
+      value: summaryValue,
+      validYears
+    });
+  });
+
+  const vectors = {
+    A: derivedRows.filter(row => row.groupKey === 'A').map(row => row.value),
+    B: derivedRows.filter(row => row.groupKey === 'B').map(row => row.value)
+  };
+
+  const validCounts = { A: vectors.A.length, B: vectors.B.length };
+
+  if (vectors.A.some(value => Number.isNaN(value)) || vectors.B.some(value => Number.isNaN(value))) {
+    validationErrors.push('Os vetores finais contêm valores inválidos.');
+  }
+
+  if (!vectors.A.length || !vectors.B.length) {
+    validationErrors.push('O período selecionado não gerou observações suficientes.');
+  } else if (vectors.A.length < 2 || vectors.B.length < 2) {
+    validationErrors.push('Selecione pelo menos 2 regiões válidas em cada grupo.');
+  }
+
+  return {
+    ok: validationErrors.length === 0,
+    primaryError: validationErrors[0] || '',
+    validationErrors,
+    selectedYears,
+    periodLabel: getPeriodLabel(state, selectedYears),
+    derivedRows,
+    vectors,
+    selectionCounts,
+    validCounts,
+    omittedRows,
+    groupRegions: {
+      A: derivedRows.filter(row => row.groupKey === 'A').map(row => row.rowLabel),
+      B: derivedRows.filter(row => row.groupKey === 'B').map(row => row.rowLabel)
+    }
+  };
+}
