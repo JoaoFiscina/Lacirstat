@@ -159,16 +159,12 @@ function createInitialState(config) {
 
 function createManualState(config) {
   return {
-    groupALabel: DEFAULT_MANUAL_LABEL_A,
-    groupBLabel: DEFAULT_MANUAL_LABEL_B,
-    groupAText: "",
-    groupBText: "",
+    studyQuestion: "As medias dos dois grupos sao diferentes?",
+    alpha: "0.05",
+    rawText: "",
     notice: null,
     result: null,
-    placeholders: {
-      groupA: Array.isArray(config?.example?.group1) ? config.example.group1.join("\n") : "4,8\n5,1\n4,9",
-      groupB: Array.isArray(config?.example?.group2) ? config.example.group2.join("\n") : "6,1\n5,8\n6,0"
-    }
+    placeholder: buildManualExampleText(config)
   };
 }
 
@@ -213,13 +209,13 @@ function renderManualMode(manual, preview) {
         <div class="t-section-head">
           <div>
             <span class="t-step">Modo Manual</span>
-            <h4>Colagem direta dos grupos</h4>
-            <p>Digite ou cole um valor por linha. Tambem funciona com colunas coladas do Excel.</p>
+            <h4>Entrada de dados</h4>
+            <p>Mantenha a colagem manual do modulo com duas colunas numericas ou com pares grupo + valor.</p>
           </div>
           <div class="t-toolbar">
-            <button type="button" class="button button-secondary" data-action="manual-example">Usar exemplo</button>
+            <button type="button" class="button button-secondary" data-action="manual-example">Carregar exemplo</button>
             <button type="button" class="button button-secondary" data-action="manual-clear">Limpar</button>
-            <button type="button" class="button" data-action="manual-run">Rodar t test</button>
+            <button type="button" class="button" data-action="manual-run">Rodar analise</button>
           </div>
         </div>
 
@@ -227,25 +223,26 @@ function renderManualMode(manual, preview) {
 
         <div class="manual-grid">
           <label class="field">
-            <span>Nome do Grupo A</span>
-            <input type="text" value="${escapeMarkup(manual.groupALabel)}" data-manual-field="groupALabel" />
+            <span>Pergunta do estudo</span>
+            <input type="text" value="${escapeMarkup(manual.studyQuestion)}" data-manual-field="studyQuestion" />
           </label>
           <label class="field">
-            <span>Nome do Grupo B</span>
-            <input type="text" value="${escapeMarkup(manual.groupBLabel)}" data-manual-field="groupBLabel" />
+            <span>Nivel de significancia</span>
+            <select data-manual-field="alpha">
+              ${[
+                ["0.01", "1%"],
+                ["0.05", "5%"],
+                ["0.10", "10%"]
+              ].map(([value, label]) => `<option value="${value}"${manual.alpha === value ? " selected" : ""}>${label}</option>`).join("")}
+            </select>
           </label>
         </div>
 
-        <div class="manual-grid">
-          <label class="field">
-            <span>Valores do Grupo A</span>
-            <textarea rows="10" data-manual-field="groupAText" placeholder="${escapeAttribute(manual.placeholders.groupA)}">${escapeMarkup(manual.groupAText)}</textarea>
-          </label>
-          <label class="field">
-            <span>Valores do Grupo B</span>
-            <textarea rows="10" data-manual-field="groupBText" placeholder="${escapeAttribute(manual.placeholders.groupB)}">${escapeMarkup(manual.groupBText)}</textarea>
-          </label>
-        </div>
+        <label class="field">
+          <span>Cole seus dados</span>
+          <textarea rows="10" data-manual-field="rawText" placeholder="${escapeAttribute(manual.placeholder)}">${escapeMarkup(manual.rawText)}</textarea>
+        </label>
+        <p class="hint-text">Formatos aceitos: duas colunas numericas (Grupo 1 e Grupo 2) ou coluna de grupo + coluna numerica (ex.: Controle;5,2).</p>
       </section>
 
       <section class="t-panel">
@@ -278,27 +275,24 @@ function renderManualPreview(preview, manual) {
     return renderEmptyCard("Sem dados manuais", "Cole os valores dos grupos ou use o exemplo para preencher o modulo.");
   }
 
-  const rows = preview.groupA.values
-    .map((value, index) => [String(index + 1), manual.groupALabel || DEFAULT_MANUAL_LABEL_A, formatNumber(value)])
-    .concat(
-      preview.groupB.values.map((value, index) => [
-        String(index + 1),
-        manual.groupBLabel || DEFAULT_MANUAL_LABEL_B,
-        formatNumber(value)
-      ])
-    );
+  const rows = preview.entries.map((entry, index) => [String(index + 1), entry.groupLabel, formatNumber(entry.value)]);
 
   return `
     <div class="summary-grid">
       <div class="summary-card">
-        <span class="summary-label">Grupo A</span>
+        <span class="summary-label">${escapeMarkup(preview.groupA.label)}</span>
         <strong>${preview.groupA.values.length} observacoes</strong>
         <p>${preview.groupA.invalid.length ? `${preview.groupA.invalid.length} item(ns) ignorado(s).` : "Nenhum item invalido."}</p>
       </div>
       <div class="summary-card">
-        <span class="summary-label">Grupo B</span>
+        <span class="summary-label">${escapeMarkup(preview.groupB.label)}</span>
         <strong>${preview.groupB.values.length} observacoes</strong>
         <p>${preview.groupB.invalid.length ? `${preview.groupB.invalid.length} item(ns) ignorado(s).` : "Nenhum item invalido."}</p>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Formato detectado</span>
+        <strong>${escapeMarkup(preview.formatLabel)}</strong>
+        <p>${escapeMarkup(preview.detailText)}</p>
       </div>
     </div>
     ${rows.length ? renderSimpleTable(["#", "Grupo", "Valor"], rows) : renderEmptyCard("Nenhum valor valido", "Os campos ainda nao geraram observacoes numericas validas.")}
@@ -718,30 +712,36 @@ function renderRadioControl(field, value, selectedValue, label) {
 }
 
 function loadManualExample(manual, config) {
-  manual.groupALabel = DEFAULT_MANUAL_LABEL_A;
-  manual.groupBLabel = DEFAULT_MANUAL_LABEL_B;
-  manual.groupAText = Array.isArray(config?.example?.group1) ? config.example.group1.join("\n") : "4,8\n5,1\n4,9";
-  manual.groupBText = Array.isArray(config?.example?.group2) ? config.example.group2.join("\n") : "6,1\n5,8\n6,0";
+  manual.studyQuestion = "As medias dos dois grupos sao diferentes?";
+  manual.alpha = "0.05";
+  manual.rawText = buildManualExampleText(config);
   manual.notice = {
     kind: "info",
     title: "Exemplo carregado",
-    text: "Os dois grupos foram preenchidos com os valores de exemplo do modulo."
+    text: "O modo manual foi preenchido com um exemplo em duas colunas para manter o fluxo original."
   };
   manual.result = null;
 }
 
 function buildManualPreview(manual) {
-  return {
-    hasAnyInput: Boolean(String(manual.groupAText).trim() || String(manual.groupBText).trim()),
-    groupA: parseManualValues(manual.groupAText),
-    groupB: parseManualValues(manual.groupBText)
-  };
+  return parseManualDataset(manual.rawText);
 }
 
 function runManualMode(manual) {
   const preview = buildManualPreview(manual);
-  const labelA = manual.groupALabel.trim() || DEFAULT_MANUAL_LABEL_A;
-  const labelB = manual.groupBLabel.trim() || DEFAULT_MANUAL_LABEL_B;
+  const labelA = preview.groupA.label || DEFAULT_MANUAL_LABEL_A;
+  const labelB = preview.groupB.label || DEFAULT_MANUAL_LABEL_B;
+  const alpha = Number(manual.alpha) || 0.05;
+
+  if (preview.error) {
+    manual.notice = {
+      kind: "danger",
+      title: "Leitura manual invalida",
+      text: preview.error
+    };
+    manual.result = null;
+    return;
+  }
 
   if (preview.groupA.values.length < 2 || preview.groupB.values.length < 2) {
     manual.notice = {
@@ -764,52 +764,195 @@ function runManualMode(manual) {
   manual.result = runWelchTTest(preview.groupA.values, preview.groupB.values, {
     labelA,
     labelB,
-    interpretation: (stats) => buildManualInterpretation(stats, labelA, labelB)
+    alpha,
+    interpretation: (stats) => buildManualInterpretation(stats, labelA, labelB, manual.studyQuestion, alpha)
   });
 }
 
-function parseManualValues(text) {
-  const values = [];
-  const invalid = [];
-  const lines = String(text || "").split(/\r?\n/);
+function parseManualDataset(text) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 
-  lines.forEach((line) => {
-    const trimmed = line.trim();
+  const emptyResult = {
+    hasAnyInput: lines.length > 0,
+    formatLabel: "Nao reconhecido",
+    detailText: "Cole os dados para detectar automaticamente o formato.",
+    groupA: { label: DEFAULT_MANUAL_LABEL_A, values: [], invalid: [] },
+    groupB: { label: DEFAULT_MANUAL_LABEL_B, values: [], invalid: [] },
+    entries: [],
+    error: ""
+  };
 
-    if (!trimmed) {
-      return;
-    }
+  if (!lines.length) {
+    return emptyResult;
+  }
 
-    let parts = trimmed.includes("\t")
-      ? trimmed.split("\t")
-      : trimmed.includes(";")
-        ? trimmed.split(";")
-        : [trimmed];
+  const rows = lines
+    .map((line) => splitManualLine(line))
+    .filter((parts) => parts.length > 0);
 
-    if (parts.length === 1 && trimmed.includes(",") && !looksLikeSingleLocaleNumber(trimmed)) {
-      parts = trimmed.split(",");
-    }
+  const groupedPreview = tryParseManualGroupedRows(rows);
 
-    parts.forEach((part) => {
-      const value = parseLocaleNumber(part);
+  if (groupedPreview) {
+    return groupedPreview;
+  }
 
-      if (value == null) {
-        if (String(part).trim()) {
-          invalid.push(String(part).trim());
-        }
-        return;
-      }
+  const columnPreview = tryParseManualTwoColumnRows(rows);
 
-      values.push(value);
-    });
-  });
+  if (columnPreview) {
+    return columnPreview;
+  }
 
-  return { values, invalid };
+  return {
+    ...emptyResult,
+    error: "Nao foi possivel interpretar a colagem manual. Use duas colunas numericas ou pares no formato Grupo;Valor.",
+    detailText: "Formato manual nao reconhecido."
+  };
 }
 
 function looksLikeSingleLocaleNumber(value) {
   const trimmed = String(value || "").trim();
   return /^[-+]?\d{1,3}(\.\d{3})*(,\d+)?$/.test(trimmed) || /^[-+]?\d+(,\d+)?$/.test(trimmed);
+}
+
+function splitManualLine(line) {
+  const trimmed = String(line || "").trim();
+
+  if (!trimmed) {
+    return [];
+  }
+
+  if (trimmed.includes("\t")) {
+    return trimmed.split(/\t+/).map((part) => cleanCell(part)).filter(Boolean);
+  }
+
+  if (trimmed.includes(";")) {
+    return trimmed.split(";").map((part) => cleanCell(part)).filter(Boolean);
+  }
+
+  if (/\s{2,}/.test(trimmed)) {
+    return trimmed.split(/\s{2,}/).map((part) => cleanCell(part)).filter(Boolean);
+  }
+
+  if (trimmed.includes("|")) {
+    return trimmed.split("|").map((part) => cleanCell(part)).filter(Boolean);
+  }
+
+  return [trimmed];
+}
+
+function tryParseManualGroupedRows(rows) {
+  const groupedValues = new Map();
+  const invalid = [];
+  let startIndex = 0;
+
+  if (
+    rows[0]?.length >= 2 &&
+    normalizeForCompare(rows[0][0]).startsWith("grupo") &&
+    normalizeForCompare(rows[0][1]).startsWith("valor")
+  ) {
+    startIndex = 1;
+  }
+
+  for (let index = startIndex; index < rows.length; index += 1) {
+    const row = rows[index];
+
+    if (row.length < 2) {
+      continue;
+    }
+
+    const groupLabel = cleanCell(row[0]);
+    const value = parseLocaleNumber(row[row.length - 1]);
+
+    if (!groupLabel || value == null) {
+      invalid.push(row.join(" "));
+      continue;
+    }
+
+    if (!groupedValues.has(groupLabel)) {
+      groupedValues.set(groupLabel, []);
+    }
+
+    groupedValues.get(groupLabel).push(value);
+  }
+
+  if (groupedValues.size !== 2) {
+    return null;
+  }
+
+  const [labelA, labelB] = Array.from(groupedValues.keys());
+  const valuesA = groupedValues.get(labelA) || [];
+  const valuesB = groupedValues.get(labelB) || [];
+
+  return {
+    hasAnyInput: true,
+    formatLabel: "Grupo + valor",
+    detailText: "Leitura por pares no formato grupo e valor numerico.",
+    groupA: { label: labelA, values: valuesA, invalid: invalid.filter((item) => item.includes(labelA)) },
+    groupB: { label: labelB, values: valuesB, invalid: invalid.filter((item) => item.includes(labelB)) },
+    entries: valuesA.map((value) => ({ groupLabel: labelA, value })).concat(valuesB.map((value) => ({ groupLabel: labelB, value }))),
+    error: ""
+  };
+}
+
+function tryParseManualTwoColumnRows(rows) {
+  const valuesA = [];
+  const valuesB = [];
+  const invalidA = [];
+  const invalidB = [];
+  let labelA = DEFAULT_MANUAL_LABEL_A;
+  let labelB = DEFAULT_MANUAL_LABEL_B;
+  let startIndex = 0;
+
+  if (rows[0]?.length >= 2) {
+    const firstA = parseLocaleNumber(rows[0][0]);
+    const firstB = parseLocaleNumber(rows[0][1]);
+
+    if (firstA == null && firstB == null) {
+      labelA = cleanCell(rows[0][0]) || DEFAULT_MANUAL_LABEL_A;
+      labelB = cleanCell(rows[0][1]) || DEFAULT_MANUAL_LABEL_B;
+      startIndex = 1;
+    }
+  }
+
+  for (let index = startIndex; index < rows.length; index += 1) {
+    const row = rows[index];
+
+    if (row.length < 2) {
+      continue;
+    }
+
+    const valueA = parseLocaleNumber(row[0]);
+    const valueB = parseLocaleNumber(row[1]);
+
+    if (valueA != null) {
+      valuesA.push(valueA);
+    } else if (cleanCell(row[0])) {
+      invalidA.push(row[0]);
+    }
+
+    if (valueB != null) {
+      valuesB.push(valueB);
+    } else if (cleanCell(row[1])) {
+      invalidB.push(row[1]);
+    }
+  }
+
+  if (!valuesA.length && !valuesB.length) {
+    return null;
+  }
+
+  return {
+    hasAnyInput: true,
+    formatLabel: "Duas colunas numericas",
+    detailText: "Leitura manual por coluna para Grupo A e Grupo B.",
+    groupA: { label: labelA, values: valuesA, invalid: invalidA },
+    groupB: { label: labelB, values: valuesB, invalid: invalidB },
+    entries: valuesA.map((value) => ({ groupLabel: labelA, value })).concat(valuesB.map((value) => ({ groupLabel: labelB, value }))),
+    error: ""
+  };
 }
 
 async function importDatasusFile(file, datasus) {

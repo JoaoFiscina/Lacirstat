@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Debug t-student</title>
+  <link rel="stylesheet" href="./assets/css/styles.css" />
+</head>
+<body>
+  <main style="padding:24px;">
+    <div id="root"></div>
+  </main>
+
+  <script type="module">
+    import { renderTestModule } from "./tests/t-student/module.js";
+
+    const utils = {
+      escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+    };
+
+    const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+    const root = document.getElementById("root");
+    const config = await fetch("./tests/t-student/config.json", { cache: "no-store" }).then((response) => response.json());
+
+    await renderTestModule({ root, config, utils });
+    await sleep(50);
+
+    document.querySelector('[data-action="switch-mode"][data-mode="datasus"]')?.click();
+    await sleep(50);
+
+    document.querySelector('[data-action="datasus-example"]')?.click();
+    await sleep(50);
+
+    const rows = Array.from(document.querySelectorAll(".data-table tbody tr"));
+    const regionMap = new Map(rows.map((row) => [row.querySelector("th")?.textContent?.trim(), row]));
+
+    [
+      ["1 Regiao Norte", "A"],
+      ["2 Regiao Nordeste", "A"],
+      ["3 Regiao Sudeste", "B"],
+      ["4 Regiao Sul", "B"],
+      ["5 Regiao Centro-Oeste", "B"]
+    ].forEach(([label, group]) => {
+      const row = regionMap.get(label);
+      const selector = `input[data-role="datasus-group"][data-group="${group}"]`;
+      row?.querySelector(selector)?.click();
+    });
+
+    await sleep(50);
+
+    const startSelect = document.querySelector('select[data-datasus-field="rangeStart"]');
+    const endSelect = document.querySelector('select[data-datasus-field="rangeEnd"]');
+
+    if (startSelect) {
+      startSelect.value = "2008";
+      startSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    if (endSelect) {
+      endSelect.value = "2012";
+      endSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    await sleep(50);
+
+    document.querySelector('[data-action="datasus-run"]')?.click();
+    await sleep(50);
+
+    document.body.dataset.debug = "ready";
+  </script>
+</body>
+</html>
