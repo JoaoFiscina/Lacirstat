@@ -1315,7 +1315,7 @@ export async function renderTestModule(ctx) {
     });
   }
 
-  function refreshManualPreview() {
+  function refreshManualPreviewLegacy() {
     const parsed = null;
 
     if (!parsed.previewRows.length) {
@@ -1338,7 +1338,7 @@ export async function renderTestModule(ctx) {
     return parsed;
   }
 
-  function runManualAnalysis() {
+  function runManualAnalysisLegacy() {
     const parsed = refreshManualPreview();
     const alpha = Number(manual.alphaEl.value || 0.05);
 
@@ -1365,7 +1365,7 @@ export async function renderTestModule(ctx) {
     manual.resultsEl.innerHTML = buildManualInterpretation(result, alpha, labels, manual.contextEl.value || defaultManualQuestion, utils);
   }
 
-  function clearManual() {
+  function clearManualLegacy() {
     manual.pasteEl.value = '';
     manual.contextEl.value = defaultManualQuestion;
     manual.alphaEl.value = '0.05';
@@ -1376,6 +1376,240 @@ export async function renderTestModule(ctx) {
     manual.metricsEl.innerHTML = '';
     manual.chartEl.innerHTML = '';
     manual.resultsEl.innerHTML = '';
+  }
+
+  function invalidateManualResults(message = 'A previa foi atualizada. Revise os dados e clique em "Rodar teste".') {
+    manual.statusEl.className = 'status-bar';
+    manual.statusEl.textContent = message;
+    manual.metricsEl.innerHTML = '';
+    manual.chartEl.innerHTML = '';
+    manual.resultsEl.innerHTML = '';
+  }
+
+  function refreshQuickCounters() {
+    const groupASummary = summarizeQuickInput(manual.groupAEl.value, stats, { numeric: true });
+    const groupBSummary = summarizeQuickInput(manual.groupBEl.value, stats, { numeric: true });
+    const unitsSummary = summarizeQuickInput(manual.unitsEl.value, stats, { numeric: false });
+
+    manual.groupACountEl.textContent = `${groupASummary.valid} validos`;
+    manual.groupBCountEl.textContent = `${groupBSummary.valid} validos`;
+    manual.unitsCountEl.textContent = `${unitsSummary.valid} labels`;
+  }
+
+  function syncManualModeUi() {
+    const paired = manualState.analysisMode === 'paired';
+
+    manual.modeButtons.forEach(button => {
+      button.classList.toggle('is-active', button.dataset.manualAnalysis === manualState.analysisMode);
+    });
+    manual.unitsWrapEl.classList.toggle('is-visible', paired);
+    manual.modeSummaryEl.textContent = paired
+      ? 't pareado: Grupo A e Grupo B precisam ter a mesma ordem de unidades. Linhas sem correspondencia ou com texto ficam marcadas como ignoradas.'
+      : 't independente: use apenas Grupo A e Grupo B. Cada grupo pode ter tamanhos diferentes, desde que tenha pelo menos 2 observacoes validas.';
+  }
+
+  function syncManualSourceUi() {
+    const hasFileSource = Boolean(manualState.fileState);
+
+    manual.sourceButtons.forEach(button => {
+      const source = button.dataset.manualSource;
+      button.classList.toggle('is-active', source === manualState.activeSource);
+      if (source === 'file') button.disabled = !hasFileSource;
+    });
+  }
+
+  function renderManualFileStatus() {
+    if (!manualState.fileState) {
+      manual.fileStatusEl.className = 'status-bar';
+      manual.fileStatusEl.textContent = 'Nenhum arquivo lido ainda.';
+      manual.fileRecognitionEl.innerHTML = '';
+      return;
+    }
+
+    if (manualState.fileState.status === 'error') {
+      manual.fileStatusEl.className = 'error-box';
+      manual.fileStatusEl.innerHTML = `
+        <strong>${utils.escapeHtml(manualState.fileState.fileName || 'arquivo')}</strong><br />
+        ${utils.escapeHtml(manualState.fileState.message)}
+      `;
+      manual.fileRecognitionEl.innerHTML = Array.isArray(manualState.fileState.details) && manualState.fileState.details.length
+        ? `<div class="small-note">${manualState.fileState.details.map(item => utils.escapeHtml(item)).join(' ')}</div>`
+        : '';
+      return;
+    }
+
+    const headerText = Number.isFinite(manualState.fileState.headerRowIndex)
+      ? `Cabecalho reconhecido na linha ${manualState.fileState.headerRowIndex + 1}.`
+      : '';
+    const delimiterText = manualState.fileState.delimiter
+      ? `Separador detectado: ${delimiterLabel(manualState.fileState.delimiter)}.`
+      : '';
+
+    manual.fileStatusEl.className = 'success-box';
+    manual.fileStatusEl.innerHTML = `
+      <strong>${utils.escapeHtml(manualState.fileState.fileName)}</strong><br />
+      ${utils.escapeHtml(`Arquivo lido em ${manualState.fileState.tableName}. ${headerText} ${delimiterText}`.trim())}
+    `;
+    manual.fileRecognitionEl.innerHTML = buildRecognizedColumnsChips(manualState.fileState.recognizedColumns);
+  }
+
+  function buildCurrentQuickDataset() {
+    return buildManualDatasetFromStructuredRows({
+      mode: manualState.analysisMode,
+      sourceKind: 'quick',
+      sourceLabel: 'Entrada manual rapida',
+      rows: buildQuickManualRows(manualState.analysisMode, {
+        groupA: manual.groupAEl.value,
+        groupB: manual.groupBEl.value,
+        units: manual.unitsEl.value
+      })
+    }, stats);
+  }
+
+  function currentManualDataset() {
+    if (manualState.activeSource === 'file' && manualState.fileState) {
+      return buildManualDatasetFromFileState(manualState.fileState, manualState.analysisMode, stats);
+    }
+    return buildCurrentQuickDataset();
+  }
+
+  function refreshManualPreview() {
+    refreshQuickCounters();
+    syncManualModeUi();
+    syncManualSourceUi();
+    renderManualFileStatus();
+
+    const dataset = currentManualDataset();
+    manualState.currentDataset = dataset;
+
+    if (!dataset.hasContent) {
+      manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
+      manual.groupSummaryEl.innerHTML = '';
+      return dataset;
+    }
+
+    const sourceChips = [
+      `<span class="small-chip ${dataset.sourceKind === 'file' ? 'primary' : 'info'}">Fonte ativa: ${utils.escapeHtml(dataset.sourceLabel)}</span>`,
+      `<span class="small-chip info">Modo: ${dataset.mode === 'paired' ? 't pareado' : 't independente'}</span>`
+    ];
+    if (dataset.fileMeta?.tableName) {
+      sourceChips.push(`<span class="small-chip info">Aba/bloco: ${utils.escapeHtml(dataset.fileMeta.tableName)}</span>`);
+    }
+
+    const primaryTone = dataset.errors.length ? 'error-box' : dataset.warnings.length ? 'status-bar' : 'success-box';
+    const primaryMessage = dataset.errors[0]
+      || (dataset.sourceKind === 'file'
+        ? 'Arquivo interpretado com transparencia. Revise as linhas antes de rodar o teste.'
+        : 'Entrada manual interpretada. Revise as linhas antes de rodar o teste.');
+    const warningsHtml = dataset.warnings.length
+      ? `<div class="status-bar" style="margin-top:12px;"><ul class="tstudent-inline-list">${dataset.warnings.map(message => `<li>${utils.escapeHtml(message)}</li>`).join('')}</ul></div>`
+      : '';
+    const infoHtml = dataset.infos.length
+      ? `<div class="small-note" style="margin-top:12px;">${dataset.infos.map(message => utils.escapeHtml(message)).join(' ')}</div>`
+      : '';
+    const recognizedHtml = dataset.sourceKind === 'file' && Object.keys(dataset.recognizedColumns).length
+      ? `<div class="tstudent-config-summary" style="margin-top:12px;">${buildRecognizedColumnsChips(dataset.recognizedColumns)}</div>`
+      : '';
+
+    manual.previewEl.innerHTML = `
+      <div class="tstudent-config-summary">${sourceChips.join('')}</div>
+      ${recognizedHtml}
+      <div class="${primaryTone}" style="margin-top:12px;">${utils.escapeHtml(primaryMessage)}</div>
+      ${warningsHtml}
+      ${infoHtml}
+      ${buildManualPreviewTable(dataset, utils)}
+    `;
+    manual.groupSummaryEl.innerHTML = `
+      <div class="metric-card">
+        <div class="metric-label">Grupo A validos</div>
+        <div class="metric-value">${dataset.validCounts.A}</div>
+        <div class="metric-mini">${dataset.mode === 'paired' ? 'pares mantidos no Grupo A' : 'observacoes usadas no Grupo A'}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Grupo B validos</div>
+        <div class="metric-value">${dataset.validCounts.B}</div>
+        <div class="metric-mini">${dataset.mode === 'paired' ? 'pares mantidos no Grupo B' : 'observacoes usadas no Grupo B'}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">${dataset.mode === 'paired' ? 'Pares mantidos' : 'Linhas ignoradas'}</div>
+        <div class="metric-value">${dataset.mode === 'paired' ? dataset.validCounts.pairs : dataset.ignoredRows.length}</div>
+        <div class="metric-mini">${dataset.mode === 'paired' ? `Linhas ignoradas = ${dataset.ignoredRows.length}` : `Total interpretado = ${dataset.rawRows}`}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Fonte ativa</div>
+        <div class="metric-value tstudent-compact-value">${utils.escapeHtml(dataset.sourceKind === 'file' ? (dataset.fileMeta?.fileName || 'Arquivo lido') : 'Entrada manual rapida')}</div>
+        <div class="metric-mini">${dataset.mode === 'paired' ? `Linhas numericas A/B = ${dataset.numericCounts.A}/${dataset.numericCounts.B}` : `Observacoes validas A/B = ${dataset.validCounts.A}/${dataset.validCounts.B}`}</div>
+      </div>
+    `;
+
+    return dataset;
+  }
+
+  function runManualAnalysis() {
+    const dataset = refreshManualPreview();
+    const alpha = Number(manual.alphaEl.value || 0.05);
+    const labels = ['Grupo A', 'Grupo B'];
+
+    if (!dataset.hasContent) {
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Cole os dados ou leia um arquivo antes de rodar o teste.');
+      return;
+    }
+
+    if (dataset.errors.length) {
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, dataset.errors[0]);
+      return;
+    }
+
+    const result = manualState.analysisMode === 'paired'
+      ? safePaired(dataset.vectors.A, dataset.vectors.B, stats)
+      : safeWelch(dataset.vectors.A, dataset.vectors.B, stats);
+    if (!Number.isFinite(result.t) || !Number.isFinite(result.p)) {
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Nao foi possivel calcular o teste com esses dados.');
+      return;
+    }
+
+    const significant = result.p < alpha;
+
+    manual.statusEl.className = significant ? 'success-box' : 'status-bar';
+    manual.statusEl.textContent = manualState.analysisMode === 'paired'
+      ? (significant
+        ? `Diferenca estatisticamente significativa detectada no t pareado (p ${utils.fmtP(result.p)}).`
+        : `Nao houve evidencia estatistica suficiente no t pareado (p ${utils.fmtP(result.p)}).`)
+      : (significant
+        ? `Diferenca estatisticamente significativa detectada no t independente (p ${utils.fmtP(result.p)}).`
+        : `Nao houve evidencia estatistica suficiente no t independente (p ${utils.fmtP(result.p)}).`);
+    manual.metricsEl.innerHTML = `
+      ${buildResultMetricsHtml(result, labels, utils)}
+      ${manualState.analysisMode === 'paired' ? `
+        <div class="metric-card">
+          <div class="metric-label">Pares validos</div>
+          <div class="metric-value">${dataset.validCounts.pairs}</div>
+          <div class="metric-mini">Somente linhas com dois valores numericos entraram no calculo.</div>
+        </div>
+      ` : ''}
+    `;
+    manual.chartEl.innerHTML = buildResultChartsHtml(result, labels, dataset.vectors.A, dataset.vectors.B, stats, utils);
+    manual.resultsEl.innerHTML = manualState.analysisMode === 'paired'
+      ? buildManualPairedInterpretation(result, alpha, manual.contextEl.value || defaultManualQuestion, utils)
+      : buildManualInterpretation(result, alpha, labels, manual.contextEl.value || defaultManualQuestion, utils);
+  }
+
+  function clearManual() {
+    manual.groupAEl.value = '';
+    manual.groupBEl.value = '';
+    manual.unitsEl.value = '';
+    manual.fileEl.value = '';
+    manualState.fileState = null;
+    manualState.activeSource = 'quick';
+    manual.contextEl.value = defaultManualQuestion;
+    manual.alphaEl.value = '0.05';
+    manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
+    manual.groupSummaryEl.innerHTML = '';
+    renderManualFileStatus();
+    refreshQuickCounters();
+    syncManualModeUi();
+    syncManualSourceUi();
+    invalidateManualResults('Campos limpos. Cole novos dados ou leia um arquivo para continuar.');
   }
 
   function currentDatasusSession() {
