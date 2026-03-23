@@ -140,7 +140,7 @@ function classifyEffect(d) {
   return 'muito grande';
 }
 
-function parseDataset(text, stats) {
+export function parseDataset(text, stats) {
   const lines = String(text || '')
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -280,7 +280,7 @@ function inferMeasureLabel(metadataLines) {
   return descriptive || clean.find(line => !line.includes(':')) || clean[0] || '';
 }
 
-function parseDatasusDataset(text, stats) {
+export function parseDatasusDataset(text, stats) {
   const rawLines = String(text || '')
     .split(/\r?\n/)
     .map(line => line.replace(/\uFEFF/g, '').trimEnd());
@@ -394,7 +394,7 @@ function parseDatasusDataset(text, stats) {
   };
 }
 
-function buildDatasusBlocks(years) {
+export function buildDatasusBlocks(years) {
   const numericYears = years
     .map(year => Number(year))
     .filter(year => Number.isFinite(year))
@@ -477,7 +477,7 @@ function joinRegionList(labels) {
   return `${labels.slice(0, -1).join(', ')} e ${labels[labels.length - 1]}`;
 }
 
-function deriveDatasusComparison(state, stats) {
+export function deriveDatasusComparison(state, stats) {
   if (!state.parsed) {
     return {
       ok: false,
@@ -598,7 +598,7 @@ function deriveDatasusComparison(state, stats) {
   };
 }
 
-function safeWelch(g1, g2, stats) {
+export function safeWelch(g1, g2, stats) {
   const n1 = g1.length;
   const n2 = g2.length;
   const m1 = stats.mean(g1);
@@ -703,7 +703,7 @@ function buildMeanCiSvg(result, labels, utils) {
   `;
 }
 
-function renderAnalysisError(statusEl, metricsEl, chartEl, resultsEl, message) {
+export function renderAnalysisError(statusEl, metricsEl, chartEl, resultsEl, message) {
   statusEl.className = 'error-box';
   statusEl.textContent = message;
   metricsEl.innerHTML = '';
@@ -711,7 +711,7 @@ function renderAnalysisError(statusEl, metricsEl, chartEl, resultsEl, message) {
   resultsEl.innerHTML = '';
 }
 
-function buildResultMetricsHtml(result, labels, utils) {
+export function buildResultMetricsHtml(result, labels, utils) {
   return `
     <div class="metric-card">
       <div class="metric-label">M\u00e9dia de ${utils.escapeHtml(labels[0])}</div>
@@ -817,7 +817,7 @@ function cleanCategoryLabelLegacy(value) {
   return withoutIndex || normalized;
 }
 
-function buildResultChartsHtml(result, labels, g1, g2, stats, utils) {
+export function buildResultChartsHtml(result, labels, g1, g2, stats, utils) {
   return `
     <article class="chart-card">
       <h4>Gr\u00e1fico 1 \u00b7 Distribui\u00e7\u00e3o e dispers\u00e3o por grupo</h4>
@@ -832,7 +832,7 @@ function buildResultChartsHtml(result, labels, g1, g2, stats, utils) {
   `;
 }
 
-function buildManualInterpretation(result, alpha, labels, question, utils) {
+export function buildManualInterpretation(result, alpha, labels, question, utils) {
   const effectClass = classifyEffect(result.d);
   const higherGroup = result.diff >= 0 ? labels[0] : labels[1];
   const diffAbs = Math.abs(result.diff);
@@ -879,7 +879,483 @@ function buildDatasusInterpretation(result, derived, alpha, question, utils) {
   `;
 }
 
-export async function renderTestModule(ctx) {
+function parseDatasusMetadata(metadataLines) {
+  return (metadataLines || [])
+    .map(line => normalizeSpaces(line))
+    .filter(Boolean)
+    .map(line => {
+      const separatorIndex = line.indexOf(':');
+      if (separatorIndex === -1) {
+        return {
+          raw: line,
+          key: line,
+          normalizedKey: normalizeToken(line),
+          value: ''
+        };
+      }
+
+      const key = normalizeSpaces(line.slice(0, separatorIndex));
+      const value = normalizeSpaces(line.slice(separatorIndex + 1));
+      return {
+        raw: line,
+        key,
+        normalizedKey: normalizeToken(key),
+        value
+      };
+    });
+}
+
+function readDatasusMetadataValue(metadataLines, candidates) {
+  const entries = parseDatasusMetadata(metadataLines);
+  const normalizedCandidates = candidates.map(candidate => normalizeToken(candidate));
+
+  for (const candidate of normalizedCandidates) {
+    const exact = entries.find(entry => entry.normalizedKey === candidate && entry.value);
+    if (exact) return exact.value;
+  }
+
+  for (const candidate of normalizedCandidates) {
+    const partial = entries.find(entry => entry.normalizedKey.includes(candidate) && entry.value);
+    if (partial) return partial.value;
+  }
+
+  return '';
+}
+
+export function inferDatasusProcedureLabel(parsed, fallback = 'Procedimento DATASUS') {
+  if (!parsed) return fallback;
+
+  const subgroup = readDatasusMetadataValue(parsed.metadataLines, [
+    'subgrupo proced.',
+    'subgrupo procedimento',
+    'procedimento'
+  ]);
+  const group = readDatasusMetadataValue(parsed.metadataLines, [
+    'grupo procedimento',
+    'grupo proced.'
+  ]);
+
+  if (subgroup) return subgroup;
+  if (group) return group;
+  if (parsed.measureLabel) return parsed.measureLabel;
+  if (parsed.titleLine) return parsed.titleLine;
+  return fallback;
+}
+
+function buildDatasusRowMap(parsed) {
+  const rowMap = new Map();
+  if (!parsed) return rowMap;
+
+  parsed.selectableRows.forEach(row => {
+    const key = normalizeToken(row.cleanLabel);
+    if (!key || rowMap.has(key)) return;
+    rowMap.set(key, row);
+  });
+
+  return rowMap;
+}
+
+export function getDatasusPairOverlap(leftEntry, rightEntry) {
+  if (!leftEntry?.parsed || !rightEntry?.parsed) {
+    return {
+      commonKeys: [],
+      commonLabels: [],
+      commonCount: 0,
+      sharedYears: []
+    };
+  }
+
+  const leftMap = buildDatasusRowMap(leftEntry.parsed);
+  const rightMap = buildDatasusRowMap(rightEntry.parsed);
+  const commonKeys = [...leftMap.keys()].filter(key => rightMap.has(key));
+  const sharedYears = leftEntry.parsed.years.filter(year => rightEntry.parsed.years.includes(year));
+  const commonLabels = commonKeys.map(key => leftMap.get(key)?.cleanLabel || rightMap.get(key)?.cleanLabel || key);
+
+  return {
+    commonKeys,
+    commonLabels,
+    commonCount: commonKeys.length,
+    sharedYears
+  };
+}
+
+export function findBestPairedSuggestion(entries) {
+  const validEntries = entries.filter(entry => entry?.parsed);
+  let best = null;
+
+  for (let leftIndex = 0; leftIndex < validEntries.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < validEntries.length; rightIndex += 1) {
+      const leftEntry = validEntries[leftIndex];
+      const rightEntry = validEntries[rightIndex];
+      const overlap = getDatasusPairOverlap(leftEntry, rightEntry);
+      if (overlap.commonCount < 2 || overlap.sharedYears.length < 1) continue;
+
+      const sameDimension = normalizeToken(leftEntry.parsed.dimensionLabel) === normalizeToken(rightEntry.parsed.dimensionLabel);
+      const score = overlap.commonCount + (sameDimension ? 1000 : 0);
+
+      if (!best || score > best.score) {
+        best = {
+          leftId: leftEntry.id,
+          rightId: rightEntry.id,
+          commonCount: overlap.commonCount,
+          commonLabels: overlap.commonLabels,
+          sharedYears: overlap.sharedYears,
+          sameDimension,
+          score
+        };
+      }
+    }
+  }
+
+  return best;
+}
+
+function getSelectedYearsFromAvailableYears(availableYears, periodState) {
+  if (!availableYears.length) return [];
+
+  if (periodState.periodMode === 'single') {
+    return availableYears.includes(periodState.singleYear)
+      ? [periodState.singleYear]
+      : [availableYears[availableYears.length - 1]];
+  }
+
+  if (periodState.periodMode === 'block') {
+    const blocks = buildDatasusBlocks(availableYears);
+    const block = blocks.all.find(item => item.key === periodState.blockKey);
+    return block ? block.years : [];
+  }
+
+  const start = Number(periodState.rangeStart);
+  const end = Number(periodState.rangeEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+  const min = Math.min(start, end);
+  const max = Math.max(start, end);
+
+  return availableYears.filter(year => {
+    const numericYear = Number(year);
+    return numericYear >= min && numericYear <= max;
+  });
+}
+
+function getPeriodLabelFromAvailableYears(periodState, selectedYears, blocks) {
+  if (!selectedYears.length) return 'sem per\u00edodo v\u00e1lido';
+
+  if (periodState.periodMode === 'single') {
+    return `ano ${selectedYears[0]}`;
+  }
+
+  if (periodState.periodMode === 'block') {
+    const block = blocks.all.find(item => item.key === periodState.blockKey);
+    if (!block) return `${selectedYears[0]}-${selectedYears[selectedYears.length - 1]}`;
+    return block.complete
+      ? `${block.label} (bloco de 5 anos)`
+      : `${block.label} (bloco incompleto)`;
+  }
+
+  return `${selectedYears[0]}-${selectedYears[selectedYears.length - 1]}`;
+}
+
+export function buildDatasusDerivedErrorState(mode, message, extras = {}) {
+  return {
+    mode,
+    ok: false,
+    primaryError: message,
+    validationErrors: [message],
+    selectedYears: [],
+    periodLabel: '',
+    derivedRows: [],
+    vectors: { A: [], B: [] },
+    selectionCounts: { A: 0, B: 0 },
+    validCounts: { A: 0, B: 0, pairs: 0 },
+    omittedRows: [],
+    groupRegions: { A: [], B: [] },
+    groupLabels: ['Grupo A', 'Grupo B'],
+    unitLabel: 'Categoria',
+    explanation: '',
+    ...extras
+  };
+}
+
+export function safePaired(g1, g2, stats) {
+  const n = Math.min(g1.length, g2.length);
+  const a = g1.slice(0, n);
+  const b = g2.slice(0, n);
+  const differences = a.map((value, index) => value - b[index]);
+  const m1 = stats.mean(a);
+  const m2 = stats.mean(b);
+  const s1 = stats.sd(a);
+  const s2 = stats.sd(b);
+  const diff = stats.mean(differences);
+  const sdDifference = stats.sd(differences);
+  const se = sdDifference / Math.sqrt(n);
+  const t = se === 0 ? 0 : diff / se;
+  const df = n - 1;
+  const p = Number.isFinite(df) && df > 0 ? 2 * (1 - stats.tcdf(Math.abs(t), df)) : NaN;
+  const tcrit = Number.isFinite(df) && df > 0 ? stats.tInv(0.975, df) : NaN;
+  const ci = Number.isFinite(tcrit) ? [diff - tcrit * se, diff + tcrit * se] : [NaN, NaN];
+  const d = !Number.isFinite(sdDifference) || sdDifference === 0 ? 0 : diff / sdDifference;
+
+  return {
+    testKind: 'paired',
+    n1: n,
+    n2: n,
+    m1,
+    m2,
+    s1,
+    s2,
+    diff,
+    meanDifference: diff,
+    sdDifference,
+    se,
+    t,
+    df,
+    p,
+    ci,
+    d,
+    differences
+  };
+}
+
+export function derivePairedDatasusComparison(options, stats) {
+  const { leftEntry, rightEntry, periodState } = options;
+
+  if (!leftEntry?.parsed || !rightEntry?.parsed) {
+    return buildDatasusDerivedErrorState('paired', 'Importe e selecione dois procedimentos v\u00e1lidos.');
+  }
+
+  if (leftEntry.id === rightEntry.id) {
+    return buildDatasusDerivedErrorState('paired', 'Selecione dois procedimentos diferentes.');
+  }
+
+  const overlap = getDatasusPairOverlap(leftEntry, rightEntry);
+  if (overlap.commonCount < 2) {
+    return buildDatasusDerivedErrorState('paired', 'N\u00e3o h\u00e1 unidades suficientes em comum para compara\u00e7\u00e3o pareada.', {
+      groupLabels: [leftEntry.procedureLabel, rightEntry.procedureLabel],
+      unitLabel: leftEntry.parsed.dimensionLabel || rightEntry.parsed.dimensionLabel || 'Unidade'
+    });
+  }
+
+  const availableYears = overlap.sharedYears.sort((a, b) => Number(a) - Number(b));
+  const blocks = buildDatasusBlocks(availableYears);
+  const selectedYears = getSelectedYearsFromAvailableYears(availableYears, periodState);
+
+  if (!selectedYears.length) {
+    return buildDatasusDerivedErrorState('paired', 'N\u00e3o h\u00e1 dados suficientes no per\u00edodo selecionado.', {
+      groupLabels: [leftEntry.procedureLabel, rightEntry.procedureLabel],
+      unitLabel: leftEntry.parsed.dimensionLabel || rightEntry.parsed.dimensionLabel || 'Unidade'
+    });
+  }
+
+  const leftMap = buildDatasusRowMap(leftEntry.parsed);
+  const rightMap = buildDatasusRowMap(rightEntry.parsed);
+  const derivedRows = [];
+  const omittedRows = [];
+
+  overlap.commonKeys.forEach(key => {
+    const leftRow = leftMap.get(key);
+    const rightRow = rightMap.get(key);
+    if (!leftRow || !rightRow) return;
+
+    const validYears = selectedYears.filter(year => Number.isFinite(leftRow.valuesByYear[year]) && Number.isFinite(rightRow.valuesByYear[year]));
+    if (!validYears.length) {
+      omittedRows.push({
+        rowLabel: leftRow.cleanLabel || rightRow.cleanLabel,
+        reason: 'Sem valores simult\u00e2neos para os dois procedimentos no per\u00edodo selecionado.'
+      });
+      return;
+    }
+
+    const valueA = stats.mean(validYears.map(year => leftRow.valuesByYear[year]));
+    const valueB = stats.mean(validYears.map(year => rightRow.valuesByYear[year]));
+    if (!Number.isFinite(valueA) || !Number.isFinite(valueB)) {
+      omittedRows.push({
+        rowLabel: leftRow.cleanLabel || rightRow.cleanLabel,
+        reason: 'Resumo inv\u00e1lido ap\u00f3s a filtragem.'
+      });
+      return;
+    }
+
+    derivedRows.push({
+      rowLabel: leftRow.cleanLabel || rightRow.cleanLabel,
+      rawLabelA: leftRow.rowLabel,
+      rawLabelB: rightRow.rowLabel,
+      valueA,
+      valueB,
+      diff: valueA - valueB,
+      validYears
+    });
+  });
+
+  derivedRows.sort((a, b) => a.rowLabel.localeCompare(b.rowLabel, 'pt-BR'));
+
+  const vectors = {
+    A: derivedRows.map(row => row.valueA),
+    B: derivedRows.map(row => row.valueB)
+  };
+  const validationErrors = [];
+
+  if (vectors.A.length < 2) {
+    validationErrors.push('Selecione pelo menos 2 observa\u00e7\u00f5es pareadas v\u00e1lidas.');
+  }
+
+  return {
+    mode: 'paired',
+    ok: validationErrors.length === 0,
+    primaryError: validationErrors[0] || '',
+    validationErrors,
+    selectedYears,
+    periodLabel: getPeriodLabelFromAvailableYears(periodState, selectedYears, blocks),
+    derivedRows,
+    vectors,
+    selectionCounts: { A: overlap.commonCount, B: overlap.commonCount },
+    validCounts: { A: vectors.A.length, B: vectors.B.length, pairs: vectors.A.length },
+    omittedRows,
+    groupRegions: {
+      A: derivedRows.map(row => row.rowLabel),
+      B: derivedRows.map(row => row.rowLabel)
+    },
+    groupLabels: [leftEntry.procedureLabel, rightEntry.procedureLabel],
+    unitLabel: leftEntry.parsed.dimensionLabel || rightEntry.parsed.dimensionLabel || 'Unidade',
+    explanation: 'Compara\u00e7\u00e3o pareada: cada unidade contribui com dois valores, um para cada procedimento.',
+    sourceLabels: [leftEntry.fileName, rightEntry.fileName]
+  };
+}
+
+export function deriveIndependentDatasusGuidedComparison(options, stats) {
+  const { entry, selectionMap, periodState, showTotal } = options;
+
+  if (!entry?.parsed) {
+    return buildDatasusDerivedErrorState('independent', 'N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.');
+  }
+
+  const localState = {
+    parsed: entry.parsed,
+    selectionMap,
+    showTotal,
+    periodMode: periodState.periodMode,
+    singleYear: periodState.singleYear,
+    rangeStart: periodState.rangeStart,
+    rangeEnd: periodState.rangeEnd,
+    blockKey: periodState.blockKey,
+    blocks: buildDatasusBlocks(entry.parsed.years)
+  };
+  const derived = deriveDatasusComparison(localState, stats);
+  const simpleErrors = [...derived.validationErrors];
+
+  if (derived.validCounts.A < 2 || derived.validCounts.B < 2) {
+    simpleErrors.unshift('Selecione pelo menos 2 observa\u00e7\u00f5es em cada grupo.');
+  }
+
+  return {
+    ...derived,
+    mode: 'independent',
+    ok: simpleErrors.length === 0,
+    primaryError: simpleErrors[0] || '',
+    validationErrors: [...new Set(simpleErrors.filter(Boolean))],
+    groupLabels: ['Grupo A', 'Grupo B'],
+    unitLabel: entry.parsed.dimensionLabel || 'Categoria',
+    explanation: 'Compara\u00e7\u00e3o entre grupos independentes definidos pelo usu\u00e1rio.',
+    datasetLabel: entry.procedureLabel,
+    sourceLabels: [entry.fileName]
+  };
+}
+
+export function buildGuidedDatasusMetricsHtml(result, derived, utils) {
+  const baseMetrics = buildResultMetricsHtml(result, derived.groupLabels, utils);
+
+  if (derived.mode !== 'paired') {
+    return baseMetrics;
+  }
+
+  return `
+    ${baseMetrics}
+    <div class="metric-card">
+      <div class="metric-label">M\u00e9dia das diferen\u00e7as pareadas</div>
+      <div class="metric-value">${utils.fmtSigned(result.meanDifference, 2)}</div>
+      <div class="metric-mini">n de pares = ${result.n1} \u00b7 desvio-padr\u00e3o das diferen\u00e7as = ${utils.fmtNumber(result.sdDifference, 2)}</div>
+      <div class="metric-note">Cada unidade entra com dois valores, mantendo a correspond\u00eancia entre os procedimentos.</div>
+    </div>
+  `;
+}
+
+export function buildGuidedDatasusStatusText(result, derived, alpha, utils) {
+  const significant = result.p < alpha;
+  const leftLabel = derived.groupLabels[0] || 'Grupo A';
+  const rightLabel = derived.groupLabels[1] || 'Grupo B';
+
+  if (derived.mode === 'paired') {
+    return significant
+      ? `H\u00e1 evid\u00eancia estat\u00edstica de diferen\u00e7a entre ${leftLabel} e ${rightLabel} nas mesmas unidades (p ${utils.fmtP(result.p)} < ${alpha.toLocaleString('pt-BR')}).`
+      : `N\u00e3o houve evid\u00eancia estat\u00edstica suficiente de diferen\u00e7a entre ${leftLabel} e ${rightLabel} nas mesmas unidades (p ${utils.fmtP(result.p)}).`;
+  }
+
+  return significant
+    ? `H\u00e1 evid\u00eancia estat\u00edstica de diferen\u00e7a entre os grupos independentes definidos pelo usu\u00e1rio (p ${utils.fmtP(result.p)} < ${alpha.toLocaleString('pt-BR')}).`
+    : `N\u00e3o houve evid\u00eancia estat\u00edstica suficiente de diferen\u00e7a entre os grupos independentes definidos pelo usu\u00e1rio (p ${utils.fmtP(result.p)}).`;
+}
+
+export function buildGuidedDatasusInterpretation(result, derived, alpha, question, utils) {
+  const significant = result.p < alpha;
+  const effectClass = classifyEffect(result.d);
+  const leftLabel = derived.groupLabels[0] || 'Grupo A';
+  const rightLabel = derived.groupLabels[1] || 'Grupo B';
+  const higherGroup = result.diff >= 0 ? leftLabel : rightLabel;
+  const direction = result.diff >= 0
+    ? `${leftLabel} apresentou m\u00e9dia maior`
+    : `${rightLabel} apresentou m\u00e9dia maior`;
+
+  if (derived.mode === 'paired') {
+    const paragraph = significant
+      ? `Compara\u00e7\u00e3o pareada entre os procedimentos ${leftLabel} e ${rightLabel} nas mesmas ${derived.unitLabel.toLowerCase()}. Observou-se diferen\u00e7a estatisticamente significativa, com m\u00e9dia maior em ${higherGroup}.`
+      : `Compara\u00e7\u00e3o pareada entre os procedimentos ${leftLabel} e ${rightLabel} nas mesmas ${derived.unitLabel.toLowerCase()}. N\u00e3o se observou diferen\u00e7a estatisticamente significativa, embora ${direction}.`;
+
+    return `
+      ${utils.buildInterpretationCard('Interpreta\u00e7\u00e3o autom\u00e1tica', paragraph, [
+        `Pergunta analisada: ${question || `Os procedimentos ${leftLabel} e ${rightLabel} diferem nas mesmas unidades?`}.`,
+        `Per\u00edodo analisado: ${derived.periodLabel}.`,
+        `Base derivada: ${derived.validCounts.pairs} pares v\u00e1lidos, mantendo apenas unidades com os dois procedimentos.`,
+        `M\u00e9dia de ${leftLabel}: ${utils.fmtNumber(result.m1, 2)}.`,
+        `M\u00e9dia de ${rightLabel}: ${utils.fmtNumber(result.m2, 2)}.`,
+        `Diferen\u00e7a m\u00e9dia (${leftLabel} - ${rightLabel}): ${utils.fmtSigned(result.diff, 2)}.`,
+        `Resultado principal: t = ${utils.fmtNumber(result.t, 3)}, gl = ${utils.fmtNumber(result.df, 2)}, p = ${utils.fmtP(result.p)}.`
+      ])}
+      <div class="result-card">
+        <h4>Leitura cl\u00ednica</h4>
+        <ul>
+          <li>Estrutura do teste: compara\u00e7\u00e3o pareada, pois cada unidade contribuiu com dois valores.</li>
+          <li>Dire\u00e7\u00e3o da diferen\u00e7a: <strong>${utils.escapeHtml(direction)}</strong>.</li>
+          <li>Tamanho de efeito: <strong>${utils.escapeHtml(effectClass)}</strong>.</li>
+        </ul>
+      </div>
+    `;
+  }
+
+  const paragraph = significant
+    ? `Compara\u00e7\u00e3o entre grupos independentes definidos pelo usu\u00e1rio. Observou-se diferen\u00e7a estatisticamente significativa entre Grupo A e Grupo B, com m\u00e9dia maior em ${higherGroup}.`
+    : `Compara\u00e7\u00e3o entre grupos independentes definidos pelo usu\u00e1rio. N\u00e3o se observou diferen\u00e7a estatisticamente significativa entre Grupo A e Grupo B, embora ${direction}.`;
+
+  return `
+    ${utils.buildInterpretationCard('Interpreta\u00e7\u00e3o autom\u00e1tica', paragraph, [
+      `Pergunta analisada: ${question || 'Os grupos independentes definidos pelo usu\u00e1rio diferem entre si?'}.`,
+      `Per\u00edodo analisado: ${derived.periodLabel}.`,
+      `Grupo A: ${joinRegionList(derived.groupRegions.A)}.`,
+      `Grupo B: ${joinRegionList(derived.groupRegions.B)}.`,
+      `M\u00e9dia do Grupo A: ${utils.fmtNumber(result.m1, 2)}.`,
+      `M\u00e9dia do Grupo B: ${utils.fmtNumber(result.m2, 2)}.`,
+      `Resultado principal: t = ${utils.fmtNumber(result.t, 3)}, gl = ${utils.fmtNumber(result.df, 2)}, p = ${utils.fmtP(result.p)}.`
+    ])}
+    <div class="result-card">
+      <h4>Leitura cl\u00ednica</h4>
+      <ul>
+        <li>Estrutura do teste: <strong>grupos independentes</strong>, com m\u00e9dia resumida por categoria no per\u00edodo selecionado.</li>
+        <li>Dire\u00e7\u00e3o da diferen\u00e7a: <strong>${utils.escapeHtml(direction)}</strong>.</li>
+        <li>Tamanho de efeito: <strong>${utils.escapeHtml(effectClass)}</strong>.</li>
+      </ul>
+    </div>
+  `;
+}
+
+async function renderTestModuleLegacy(ctx) {
   const { root, config, utils, stats } = ctx;
   root.classList.add('tstudent-module');
 
@@ -2157,3 +2633,5 @@ export async function renderTestModule(ctx) {
   renderDatasusDerived();
   updateDatasusRunAvailability();
 }
+
+export { renderTestModule } from './module-guided.js';
