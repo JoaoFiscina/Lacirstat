@@ -350,6 +350,135 @@ export async function renderTestModule(ctx) {
     els.results.innerHTML = '';
   };
 
+  function pushDatasusToPrais() {
+    const derived = deriveDatasusSeries();
+    datasusState.derived = derived;
+    renderDatasusPreview();
+
+    if (!derived.ok) {
+      datasusControlsEl.innerHTML = `<div class="error-box">${utils.escapeHtml(derived.primaryError || 'Nao ha serie temporal suficiente.')}</div>`;
+      return;
+    }
+
+    const lines = [
+      `Tempo\t${derived.metricLabel || 'Indicador'}`,
+      ...derived.rows.map(row => `${row.timeLabel}\t${row.value}`)
+    ];
+
+    els.paste.value = lines.join('\n');
+    refreshPreview();
+    runAnalysis();
+    els.status.className = 'success-box';
+    els.status.textContent = `Serie derivada do DATASUS enviada ao modulo com ${derived.rows.length} pontos validos.`;
+  }
+
+  function renderDatasusPreview() {
+    const derived = deriveDatasusSeries();
+    datasusState.derived = derived;
+
+    if (!derived.ok) {
+      datasusPreviewEl.innerHTML = `
+        <div class="error-box">
+          <strong>Serie derivada ainda invalida.</strong>
+          <ul class="datasus-inline-list">
+            ${(derived.errors || [derived.primaryError || 'Nao ha serie temporal suficiente.']).map(item => `<li>${utils.escapeHtml(item)}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+      return;
+    }
+
+    const rows = derived.rows.map(row => [row.timeLabel, utils.fmtNumber(row.value, 3)]);
+    datasusPreviewEl.innerHTML = `
+      <div class="success-box">A serie final esta pronta para ser enviada ao Prais-Winsten.</div>
+      <div class="small-note" style="margin:14px 0 10px;">Cada linha abaixo representa o valor final usado no eixo temporal.</div>
+      ${utils.renderPreviewTable(['Tempo', derived.metricLabel || 'Indicador'], rows, 20)}
+    `;
+  }
+
+  function renderDatasusControls() {
+    const sources = confirmedSources();
+    if (!sources.length) {
+      const hasShared = Boolean(shared?.datasus?.lastSession?.confirmedSources?.length);
+      datasusControlsEl.innerHTML = `
+        <div class="status-bar">Confirme uma base DATASUS no wizard para liberar a montagem assistida da serie.</div>
+        ${hasShared ? '<div class="actions-row" style="margin-top:14px;"><button type="button" class="btn-secondary" id="pw-datasus-use-shared">Usar ultima sessao DATASUS confirmada</button></div>' : ''}
+      `;
+      datasusPreviewEl.innerHTML = '';
+      datasusControlsEl.querySelector('#pw-datasus-use-shared')?.addEventListener('click', () => {
+        datasusState.sharedSession = clonePlain(shared.datasus.lastSession);
+        renderDatasusControls();
+        renderDatasusPreview();
+      });
+      return;
+    }
+
+    ensureDatasusDefaults();
+    const source = getSource(datasusState.sourceId);
+    const metricOptions = getMetricOptions(source);
+    const categories = getCategoryOptions(source, true);
+
+    datasusControlsEl.innerHTML = `
+      <div class="form-grid three">
+        <div>
+          <label for="pw-datasus-source">Base normalizada</label>
+          <select id="pw-datasus-source">
+            ${sources.map(item => `<option value="${utils.escapeHtml(item.id)}"${item.id === source.id ? ' selected' : ''}>${utils.escapeHtml(item.fileName)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="pw-datasus-metric">Medida</label>
+          <select id="pw-datasus-metric">
+            ${metricOptions.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.metricBySource[source.id] ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="pw-datasus-category">Categoria</label>
+          <select id="pw-datasus-category">
+            ${categories.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.categoryKey ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="actions-row" style="margin-top:14px;">
+        <button type="button" class="btn" id="pw-datasus-send">Enviar serie derivada para o modulo</button>
+      </div>
+    `;
+
+    datasusControlsEl.querySelector('#pw-datasus-source')?.addEventListener('change', event => {
+      datasusState.sourceId = event.target.value;
+      ensureDatasusDefaults();
+      renderDatasusControls();
+      renderDatasusPreview();
+    });
+
+    datasusControlsEl.querySelector('#pw-datasus-metric')?.addEventListener('change', event => {
+      datasusState.metricBySource[source.id] = event.target.value;
+      renderDatasusPreview();
+    });
+
+    datasusControlsEl.querySelector('#pw-datasus-category')?.addEventListener('change', event => {
+      datasusState.categoryKey = event.target.value;
+      renderDatasusPreview();
+    });
+
+    datasusControlsEl.querySelector('#pw-datasus-send')?.addEventListener('click', pushDatasusToPrais);
+  }
+
+  function mountDatasusWizard() {
+    createDatasusWizard({
+      root: datasusWizardEl,
+      utils,
+      stats,
+      shared,
+      onSessionChange(session) {
+        datasusState.session = clonePlain(session);
+        datasusState.sharedSession = clonePlain(shared?.datasus?.lastSession || null);
+        renderDatasusControls();
+        renderDatasusPreview();
+      }
+    });
+  }
+
   const refreshPreview = () => {
     const parsed = parseDataset(els.paste.value, stats);
     const rowsForPreview = parsed.validRows.map(r => [String(r.time), String(r.value)]);

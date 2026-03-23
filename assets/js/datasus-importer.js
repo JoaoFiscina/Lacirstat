@@ -217,8 +217,9 @@ export function isTotalLikeToken(value, utils) {
 
 export function cleanDatasusCategoryLabel(value, utils) {
   const normalized = normalizeDatasusLabel(value, utils);
-  const withoutIndex = normalized.replace(/^\(?\d+\)?(?:[.\-])?\s+/, '').trim();
-  return withoutIndex || normalized;
+  const withoutDots = normalized.replace(/^(?:\.\.?)+\s*/, '').trim();
+  const withoutIndex = withoutDots.replace(/^\(?\d+\)?(?:[.\-])?\s+/, '').trim();
+  return withoutIndex || withoutDots || normalized;
 }
 
 function buildLineObjects(text, utils) {
@@ -369,6 +370,7 @@ function detectProbableFormat(columnProfiles) {
   const measureColumns = columnProfiles.filter(profile => profile.suggestedRole === 'measure');
 
   if (timeColumns.length >= 2) return 'wide';
+  if (measureColumns.length >= 2) return 'long';
   if (timeColumns.length >= 1 && measureColumns.length >= 1) return 'long';
   return 'hybrid';
 }
@@ -418,6 +420,7 @@ function buildDiagnosis({ delimiter, headerRowIndex, metadataLines, columnProfil
       `Formato provavel: ${formatType}.`,
       `Dimensao principal nas linhas: ${primaryCategory?.header || 'nao identificada'}.`,
       `Colunas temporais detectadas: ${timeLabels.length ? timeLabels.join(', ') : 'nao identificadas'}.`,
+      `Colunas de medida detectadas: ${measureColumns.length ? measureColumns.map(profile => profile.header).join(', ') : 'nao identificadas'}.`,
       `Coluna Total detectada: ${totalColumns.length ? 'sim' : 'nao'}.`,
       `Cabecalho provavel: linha ${headerRowIndex + 1}.`
     ].join(' ')

@@ -72,6 +72,20 @@ function linePreview(source) {
   ]);
 }
 
+function headerSelectOptions(source, utils) {
+  const topCandidates = source.parsed.headerCandidates.slice(0, 12).map(candidate => candidate.rowIndex);
+  const previewLines = source.parsed.lines.slice(0, 20).map(line => line.index);
+  const uniqueLineIndexes = [...new Set([...topCandidates, ...previewLines, source.parsed.headerRowIndex])].sort((left, right) => left - right);
+
+  return uniqueLineIndexes.map(lineIndex => {
+    const line = source.parsed.lines.find(item => item.index === lineIndex);
+    return {
+      rowIndex: lineIndex,
+      preview: line?.clean || line?.raw || `Linha ${lineIndex + 1}`
+    };
+  });
+}
+
 function headerOptionLabel(candidate, utils) {
   return `Linha ${candidate.rowIndex + 1} - ${utils.escapeHtml(candidate.preview || 'Sem conteudo relevante')}`;
 }
@@ -268,9 +282,9 @@ export function createDatasusWizard({
                 <div>
                   <label for="datasus-header-select">Linha do cabecalho real</label>
                   <select id="datasus-header-select">
-                    ${source.parsed.headerCandidates.slice(0, 12).map(candidate => `
-                      <option value="${candidate.rowIndex}"${candidate.rowIndex === source.parsed.headerRowIndex ? ' selected' : ''}>
-                        Linha ${candidate.rowIndex + 1} - ${utils.escapeHtml(candidate.preview)}
+                    ${headerSelectOptions(source, utils).map(option => `
+                      <option value="${option.rowIndex}"${option.rowIndex === source.parsed.headerRowIndex ? ' selected' : ''}>
+                        Linha ${option.rowIndex + 1} - ${utils.escapeHtml(option.preview)}
                       </option>
                     `).join('')}
                   </select>
@@ -521,13 +535,14 @@ export function createDatasusWizard({
     }
 
     const sources = loaded.filter(item => item.ok).map(item => ({
-      id: `datasus-source-${state.nextId += 1}`,
+      id: `datasus-source-${state.nextId + 1}`,
       fileName: item.fileName,
       rawText: item.rawText,
       sourceKind: item.sourceKind
     }));
 
     sources.forEach(source => {
+      state.nextId += 1;
       reparseSource(source, utils, stats);
       state.sources.push(source);
     });
@@ -545,11 +560,12 @@ export function createDatasusWizard({
   async function addTextSources(textSources, successMessage = 'Fonte DATASUS carregada.') {
     textSources.forEach(item => {
       const source = {
-        id: `datasus-source-${state.nextId += 1}`,
+        id: `datasus-source-${state.nextId + 1}`,
         fileName: item.fileName || `fonte-datasus-${state.nextId}.txt`,
         rawText: item.text || '',
         sourceKind: item.sourceKind || 'example'
       };
+      state.nextId += 1;
       reparseSource(source, utils, stats);
       state.sources.push(source);
       if (!state.activeSourceId) state.activeSourceId = source.id;
