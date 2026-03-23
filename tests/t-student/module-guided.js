@@ -900,3 +900,150 @@ export async function renderTestModule(ctx) {
 
     attachPeriodEvents();
   }
+
+  function renderDatasusSelection() {
+    ensureDatasusDefaults();
+
+    if (!confirmedSources().length) {
+      datasusRefs.selectionEl.innerHTML = '<div class="small-note">Confirme uma base DATASUS primeiro.</div>';
+      return;
+    }
+
+    if (datasusState.analysisMode === 'paired') {
+      const leftSource = getSource(datasusState.leftSourceId);
+      const rightSource = getSource(datasusState.rightSourceId);
+      if (!leftSource || !rightSource) {
+        datasusRefs.selectionEl.innerHTML = '<div class="error-box">Selecione duas bases confirmadas para comparar procedimentos.</div>';
+        return;
+      }
+      renderPairedSelection(leftSource, rightSource);
+      return;
+    }
+
+    const source = getSource(datasusState.sourceId);
+    if (!source) {
+      datasusRefs.selectionEl.innerHTML = '<div class="error-box">Selecione uma base confirmada para comparar grupos.</div>';
+      return;
+    }
+    renderIndependentSelection(source);
+  }
+
+  function renderDatasusDerived() {
+    const derived = deriveCurrentData();
+    datasusState.derived = derived;
+    datasusRefs.runBtn.disabled = !derived.ok;
+
+    if (!derived.ok) {
+      datasusRefs.derivedEl.innerHTML = `
+        <div class="error-box">
+          <strong>Base derivada ainda invalida.</strong>
+          <ul class="datasus-inline-list">
+            ${(derived.errors || [derived.primaryError || 'Nao ha dados suficientes para comparacao.']).map(item => `<li>${utils.escapeHtml(item)}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+      return;
+    }
+
+    if (derived.mode === 'paired') {
+      const rows = derived.derivedRows.map(row => [
+        row.rowLabel,
+        utils.fmtNumber(row.valueA, 3),
+        utils.fmtNumber(row.valueB, 3),
+        utils.fmtSigned(row.diff, 3),
+        row.validTimes.join(', ')
+      ]);
+
+      datasusRefs.derivedEl.innerHTML = `
+        <div class="success-box">${utils.escapeHtml(derived.explanation)}</div>
+        <div class="small-note" style="margin:14px 0 10px;">Diferenca por unidade: cada linha abaixo corresponde a um par usado no teste.</div>
+        ${utils.renderPreviewTable(['Unidade', 'Procedimento A', 'Procedimento B', 'Diferenca', 'Periodos usados'], rows, 20)}
+      `;
+      return;
+    }
+
+    const rows = derived.derivedRows.map(row => [
+      row.rowLabel,
+      row.groupLabel,
+      utils.fmtNumber(row.value, 3),
+      row.validTimes.join(', ')
+    ]);
+
+    datasusRefs.derivedEl.innerHTML = `
+      <div class="success-box">${utils.escapeHtml(derived.explanation)}</div>
+      <div class="small-note" style="margin:14px 0 10px;">Resumo utilizado: media dos periodos selecionados dentro de cada categoria, mantendo cada categoria como observacao separada.</div>
+      ${utils.renderPreviewTable(['Categoria', 'Grupo', 'Valor resumido', 'Periodos usados'], rows, 20)}
+    `;
+  }
+
+  function runDatasusAnalysis() {
+    const derived = deriveCurrentData();
+    datasusState.derived = derived;
+    renderDatasusDerived();
+
+    if (!derived.ok) {
+      datasusRefs.statusEl.className = 'error-box';
+      datasusRefs.statusEl.textContent = derived.primaryError || 'Nao ha dados suficientes para comparacao.';
+      datasusRefs.metricsEl.innerHTML = '';
+      datasusRefs.chartEl.innerHTML = '';
+      datasusRefs.resultsEl.innerHTML = '';
+      return;
+    }
+
+    const result = derived.mode === 'paired'
+      ? safePaired(derived.vectors.A, derived.vectors.B, stats)
+      : safeWelch(derived.vectors.A, derived.vectors.B, stats);
+    const alpha = Number(datasusRefs.alphaEl.value || 0.05);
+
+    datasusRefs.statusEl.className = toneClass(result.p < alpha ? 'success' : 'status');
+    datasusRefs.statusEl.textContent = buildGuidedStatusText(result, derived, alpha, utils);
+    datasusRefs.metricsEl.innerHTML = buildGuidedExtraMetrics(derived, utils) + buildResultMetricsHtml(result, derived.groupLabels, utils);
+    datasusRefs.chartEl.innerHTML = buildResultChartsHtml(result, derived.groupLabels, derived.vectors.A, derived.vectors.B, stats, utils);
+    datasusRefs.resultsEl.innerHTML = buildGuidedInterpretation(result, derived, alpha, datasusRefs.contextEl.value || defaultDatasusQuestion, utils);
+  }
+
+  function mountWizard() {
+    createDatasusWizard({
+      root: datasusRefs.wizardEl,
+      utils,
+      stats,
+      shared,
+      exampleSources: exampleSourcesFromConfig(config),
+      onSessionChange(session) {
+        datasusState.session = clonePlain(session);
+        datasusState.sharedSession = clonePlain(shared?.datasus?.lastSession || null);
+        ensureDatasusDefaults();
+        renderDatasusAnalysis();
+        renderDatasusSelection();
+        renderDatasusDerived();
+        invalidateDatasusResults(session.confirmedSources.length ? 'Base DATASUS confirmada e pronta para derivacao.' : 'Confirme uma base DATASUS para prosseguir.');
+      }
+    });
+  }
+
+  root.querySelectorAll('.tstudent-mode-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      setActiveModePanel(button.dataset.modeTarget);
+    });
+  });
+
+  root.querySelector('#t-example').addEventListener('click', () => {
+    manual.pasteEl.value = config.exampleText || '';
+    runManualAnalysis();
+  });
+  root.querySelector('#t-run').addEventListener('click', runManualAnalysis);
+  root.querySelector('#t-clear').addEventListener('click', clearManual);
+  manual.pasteEl.addEventListener('input', refreshManualPreview);
+
+  datasusRefs.contextEl.addEventListener('input', () => invalidateDatasusResults('Texto interpretativo atualizado. Rode novamente para refletir a nova pergunta.'));
+  datasusRefs.alphaEl.addEventListener('change', () => invalidateDatasusResults('Nivel de significancia atualizado. Rode novamente para recalcular a leitura final.'));
+  datasusRefs.runBtn.addEventListener('click', runDatasusAnalysis);
+
+  manual.pasteEl.value = config.exampleText || '';
+  runManualAnalysis();
+  mountWizard();
+  renderDatasusAnalysis();
+  renderDatasusSelection();
+  renderDatasusDerived();
+  invalidateDatasusResults('Aguardando base derivada valida.');
+}
