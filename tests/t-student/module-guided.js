@@ -63,7 +63,7 @@ function normalizeManualToken(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[_-]+/g, ' ')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/[^a-z0-9\s]/gi, ' ')
     .replace(/\s+/g, ' ')
     .toLowerCase()
     .trim();
@@ -1181,7 +1181,7 @@ export async function renderTestModule(ctx) {
               unidade: unidade, uf, unidade_analitica, estado<br />
               grupo_a: grupo_a, grupo a, grupo1, grupo_1<br />
               grupo_b: grupo_b, grupo b, grupo2, grupo_2<br />
-              observacao_opcional: observacao, observacao, obs, comentario
+              observacao_opcional: observacao, obs, comentario
             </div>
           </div>
           <div id="t-file-status" class="status-bar" style="margin-top:16px;">Nenhum arquivo lido ainda.</div>
