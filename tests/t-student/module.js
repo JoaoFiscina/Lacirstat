@@ -324,7 +324,7 @@ function parseDatasusDataset(text, stats) {
   bodyRows.forEach((rawRow, bodyIndex) => {
     const row = Array.from({ length: maxCols }, (_, index) => normalizeSpaces(rawRow[index]));
     const rawLabel = row[header.dimensionIndex] || row.find(cell => cell) || '';
-    const cleanLabel = cleanCategoryLabel(rawLabel);
+    const cleanLabel = cleanCategoryLabelLegacy(rawLabel);
     const isTotalRow = normalizeToken(cleanLabel) === 'total';
     const valuesByYear = {};
     let validCount = 0;
@@ -752,7 +752,7 @@ function buildResultMetricsHtml(result, labels, utils) {
   `;
 }
 
-function buildResultChartsHtml(result, labels, g1, g2, stats, utils) {
+function buildResultChartsHtmlLegacy(result, labels, g1, g2, stats, utils) {
   return `
     <article class="chart-card">
       <h4>Grafico 1 · Distribuicao e dispersao por grupo</h4>
@@ -766,7 +766,7 @@ function buildResultChartsHtml(result, labels, g1, g2, stats, utils) {
   `;
 }
 
-function buildManualInterpretation(result, alpha, labels, question, utils) {
+function buildManualInterpretationLegacy(result, alpha, labels, question, utils) {
   const effectClass = classifyEffect(result.d);
   const higherGroup = result.diff >= 0 ? labels[0] : labels[1];
   const diffAbs = Math.abs(result.diff);
@@ -792,7 +792,7 @@ function buildManualInterpretation(result, alpha, labels, question, utils) {
   `;
 }
 
-function buildDatasusInterpretation(result, derived, alpha, question, utils) {
+function buildDatasusInterpretationLegacy(result, derived, alpha, question, utils) {
   const significant = result.p < alpha;
   const higherGroup = result.diff >= 0 ? 'Grupo A' : 'Grupo B';
   const paragraph = significant
@@ -811,7 +811,7 @@ function buildDatasusInterpretation(result, derived, alpha, question, utils) {
   `;
 }
 
-function cleanCategoryLabel(value) {
+function cleanCategoryLabelLegacy(value) {
   const normalized = normalizeSpaces(value).replace(/^\uFEFF+/, '');
   const withoutIndex = normalized.replace(/^\(?\d+\)?(?:[.\-])?\s+(?=[A-Z\u00c0-\u00d6\u00d8-\u00de])/u, '').trim();
   return withoutIndex || normalized;
@@ -1082,7 +1082,7 @@ export async function renderTestModule(ctx) {
     error: ''
   };
 
-  function refreshManualPreview() {
+  function refreshManualPreviewLegacy() {
     const parsed = parseDataset(manual.pasteEl.value, stats);
 
     if (!parsed.previewRows.length) {
@@ -1105,7 +1105,7 @@ export async function renderTestModule(ctx) {
     return parsed;
   }
 
-  function runManualAnalysis() {
+  function runManualAnalysisLegacy() {
     const parsed = refreshManualPreview();
     const alpha = Number(manual.alphaEl.value || 0.05);
 
@@ -1132,7 +1132,7 @@ export async function renderTestModule(ctx) {
     manual.resultsEl.innerHTML = buildManualInterpretation(result, alpha, labels, manual.contextEl.value || config.defaultQuestion || '', utils);
   }
 
-  function clearManual() {
+  function clearManualLegacy() {
     manual.pasteEl.value = '';
     manual.contextEl.value = config.defaultQuestion || 'As médias dos grupos são diferentes?';
     manual.alphaEl.value = '0.05';
@@ -1181,7 +1181,7 @@ export async function renderTestModule(ctx) {
     datasusRefs.runBtn.classList.toggle('is-disabled', !enabled);
   }
 
-  function invalidateDatasusRun() {
+  function invalidateDatasusRunLegacy() {
     datasusState.result = null;
     clearDatasusResultPanels();
     datasusRefs.resultStatusEl.className = 'status-bar';
@@ -1191,7 +1191,7 @@ export async function renderTestModule(ctx) {
     updateDatasusRunAvailability();
   }
 
-  function renderDatasusImportStatus() {
+  function renderDatasusImportStatusLegacy() {
     if (datasusState.error) {
       datasusRefs.statusCardEl.className = 'error-box';
       datasusRefs.statusCardEl.innerHTML = datasusState.fileName
@@ -1238,7 +1238,7 @@ export async function renderTestModule(ctx) {
     `;
   }
 
-  function renderDatasusPreview() {
+  function renderDatasusPreviewLegacy() {
     if (datasusState.error) {
       datasusRefs.previewEl.innerHTML = `<div class="error-box">${utils.escapeHtml(datasusState.error)}</div>`;
       return;
@@ -1260,7 +1260,7 @@ export async function renderTestModule(ctx) {
     `;
   }
 
-  function renderDatasusControls() {
+  function renderDatasusControlsLegacy() {
     if (!datasusState.parsed) {
       datasusRefs.controlsEl.innerHTML = '<div class="small-note">A configuracao ficara disponivel apos a leitura bem-sucedida do arquivo.</div>';
       updateDatasusRunAvailability();
@@ -1420,7 +1420,7 @@ export async function renderTestModule(ctx) {
     updateDatasusRunAvailability();
   }
 
-  function renderDatasusDerived() {
+  function renderDatasusDerivedLegacy() {
     if (!datasusState.parsed) {
       datasusState.derived = null;
       datasusRefs.derivedEl.innerHTML = '<div class="small-note">Selecione grupos e periodo para montar a base derivada.</div>';
@@ -1500,7 +1500,7 @@ export async function renderTestModule(ctx) {
     updateDatasusRunAvailability();
   }
 
-  function hydrateDatasusParsed(text, fileName, sourceKind = 'upload') {
+  function hydrateDatasusParsedLegacy(text, fileName, sourceKind = 'upload') {
     resetDatasusImportedState();
     datasusState.activeSource = sourceKind;
     datasusState.fileName = fileName || '';
@@ -1558,7 +1558,7 @@ export async function renderTestModule(ctx) {
     }
   }
 
-  function runDatasusAnalysis() {
+  function runDatasusAnalysisLegacy() {
     if (!datasusState.parsed) {
       renderDatasusResultState('Nao foi possivel interpretar o arquivo DATASUS enviado.', 'error');
       return;
@@ -1593,7 +1593,7 @@ export async function renderTestModule(ctx) {
     updateDatasusRunAvailability();
   }
 
-  function clearDatasusAll() {
+  function clearDatasusAllLegacy() {
     resetDatasusImportedState();
     datasusRefs.fileEl.value = '';
     datasusRefs.contextEl.value = config.defaultDatasusQuestion || 'As medias resumidas diferem entre Grupo A e Grupo B?';
