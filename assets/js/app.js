@@ -3,6 +3,11 @@ const moduleRoot = document.getElementById('module-root');
 const pageTitle = document.getElementById('page-title');
 const pageSubtitle = document.getElementById('page-subtitle');
 const heroNote = document.getElementById('hero-note');
+const sharedState = window.__LACIR_SHARED__ || (window.__LACIR_SHARED__ = {
+  datasus: {
+    lastSession: null
+  }
+});
 
 const utils = {
   clearElement(el) {
@@ -554,7 +559,8 @@ async function loadTest(testItem, manifest) {
       manifest,
       currentTest: testItem,
       utils,
-      stats: Stats
+      stats: Stats,
+      shared: sharedState
     });
   } catch (error) {
     console.error(error);
