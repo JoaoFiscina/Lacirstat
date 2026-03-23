@@ -486,5 +486,279 @@ export async function renderTestModule(ctx) {
     };
   }
 
-  // __TAIL__
+  function getExampleDatasusSources() {
+    if (Array.isArray(config.exampleDatasusPairedFiles) && config.exampleDatasusPairedFiles.length) {
+      return config.exampleDatasusPairedFiles.map((entry, index) => ({
+        fileName: entry.fileName || `exemplo-datasus-${index + 1}.tsv`,
+        text: entry.text || '',
+        sourceKind: 'example'
+      }));
+    }
+
+    return [{
+      fileName: 'exemplo-datasus.tsv',
+      text: config.exampleDatasusText || '',
+      sourceKind: 'example'
+    }];
+  }
+
+  function getDerivedDatasusState() {
+    if (!datasusState.library.length) {
+      return {
+        ok: false,
+        mode: datasusState.analysisMode,
+        primaryError: 'Importe um arquivo DATASUS para continuar.',
+        validationErrors: ['Importe um arquivo DATASUS para continuar.'],
+        derivedRows: [],
+        vectors: { A: [], B: [] },
+        validCounts: { A: 0, B: 0, pairs: 0 },
+        selectionCounts: { A: 0, B: 0 },
+        omittedRows: [],
+        selectedYears: [],
+        periodLabel: '',
+        groupLabels: ['Grupo A', 'Grupo B'],
+        groupRegions: { A: [], B: [] },
+        unitLabel: 'Categoria',
+        explanation: ''
+      };
+    }
+
+    if (datasusState.analysisMode === 'paired') {
+      const { leftEntry, rightEntry } = getActivePairedEntries();
+      return derivePairedDatasusComparison({
+        leftEntry,
+        rightEntry,
+        periodState: datasusState
+      }, stats);
+    }
+
+    const activeEntry = getActiveIndependentEntry();
+    return deriveIndependentDatasusGuidedComparison({
+      entry: activeEntry,
+      selectionMap: getDatasusSelectionMap(activeEntry?.id),
+      periodState: datasusState,
+      showTotal: getDatasusShowTotal(activeEntry?.id)
+    }, stats);
+  }
+
+  function updateDatasusRunAvailability() {
+    const enabled = Boolean(datasusState.derived && datasusState.derived.ok);
+    datasusRefs.runBtn.disabled = !enabled;
+    datasusRefs.runBtn.classList.toggle('is-disabled', !enabled);
+    datasusRefs.runBtn.textContent = datasusState.analysisMode === 'paired'
+      ? 'Rodar t pareado'
+      : 'Rodar t independente';
+  }
+
+  function invalidateDatasusRun() {
+    datasusState.result = null;
+    clearDatasusResultPanels();
+    datasusRefs.resultStatusEl.className = 'status-bar';
+    datasusRefs.resultStatusEl.textContent = datasusState.library.length
+      ? 'A base derivada foi atualizada. Revise os dados e execute o teste quando a valida\u00e7\u00e3o estiver verde.'
+      : 'Aguardando importa\u00e7\u00e3o de arquivo.';
+    updateDatasusRunAvailability();
+  }
+
+  function buildPeriodControlsHtml(availableYears, blocks) {
+    if (!availableYears.length) {
+      return '<div class="error-box" style="margin-top:14px;">N\u00e3o h\u00e1 per\u00edodo v\u00e1lido dispon\u00edvel para esta sele\u00e7\u00e3o.</div>';
+    }
+
+    const blockOptions = blocks.complete.length ? blocks.complete : blocks.all;
+    const incompleteNote = blocks.incomplete.length
+      ? `<div class="small-note tstudent-advanced-note">Blocos incompletos detectados: ${utils.escapeHtml(blocks.incomplete.map(block => block.label).join(', '))}.</div>`
+      : '';
+
+    return `
+      <div class="form-grid three" style="margin-top:16px;">
+        <div>
+          <label for="t-datasus-period-mode">Per\u00edodo analisado</label>
+          <select id="t-datasus-period-mode">
+            <option value="single"${datasusState.periodMode === 'single' ? ' selected' : ''}>Ano \u00fanico (default)</option>
+            <option value="range"${datasusState.periodMode === 'range' ? ' selected' : ''}>Intervalo</option>
+            <option value="block"${datasusState.periodMode === 'block' ? ' selected' : ''}>Bloco de 5 anos</option>
+          </select>
+        </div>
+        <div class="tstudent-period-field ${datasusState.periodMode === 'single' ? 'is-visible' : ''}">
+          <label for="t-datasus-single-year">Ano</label>
+          <select id="t-datasus-single-year">
+            ${availableYears.map(year => `<option value="${utils.escapeHtml(year)}"${year === datasusState.singleYear ? ' selected' : ''}>${utils.escapeHtml(year)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="tstudent-period-field ${datasusState.periodMode === 'block' ? 'is-visible' : ''}">
+          <label for="t-datasus-block">Bloco autom\u00e1tico</label>
+          <select id="t-datasus-block">
+            ${blockOptions.length
+              ? blockOptions.map(block => `<option value="${utils.escapeHtml(block.key)}"${block.key === datasusState.blockKey ? ' selected' : ''}>${utils.escapeHtml(block.label)}</option>`).join('')
+              : '<option value="">Nenhum bloco dispon\u00edvel</option>'}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-grid two tstudent-range-grid ${datasusState.periodMode === 'range' ? 'is-visible' : ''}">
+        <div>
+          <label for="t-datasus-range-start">Ano inicial</label>
+          <select id="t-datasus-range-start">
+            ${availableYears.map(year => `<option value="${utils.escapeHtml(year)}"${year === datasusState.rangeStart ? ' selected' : ''}>${utils.escapeHtml(year)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="t-datasus-range-end">Ano final</label>
+          <select id="t-datasus-range-end">
+            ${availableYears.map(year => `<option value="${utils.escapeHtml(year)}"${year === datasusState.rangeEnd ? ' selected' : ''}>${utils.escapeHtml(year)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      ${incompleteNote}
+    `;
+  }
+
+  function attachPeriodControlEvents() {
+    const periodModeEl = datasusRefs.selectionEl.querySelector('#t-datasus-period-mode');
+    const singleYearEl = datasusRefs.selectionEl.querySelector('#t-datasus-single-year');
+    const rangeStartEl = datasusRefs.selectionEl.querySelector('#t-datasus-range-start');
+    const rangeEndEl = datasusRefs.selectionEl.querySelector('#t-datasus-range-end');
+    const blockEl = datasusRefs.selectionEl.querySelector('#t-datasus-block');
+
+    periodModeEl?.addEventListener('change', event => {
+      datasusState.periodMode = event.target.value;
+      ensurePeriodState();
+      renderDatasusSelectionStep();
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    singleYearEl?.addEventListener('change', event => {
+      datasusState.singleYear = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    rangeStartEl?.addEventListener('change', event => {
+      datasusState.rangeStart = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    rangeEndEl?.addEventListener('change', event => {
+      datasusState.rangeEnd = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    blockEl?.addEventListener('change', event => {
+      datasusState.blockKey = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+  }
+
+  function renderDatasusImportStatus() {
+    if (datasusState.error && !datasusState.library.length) {
+      datasusRefs.statusCardEl.className = 'error-box';
+      datasusRefs.statusCardEl.textContent = datasusState.error;
+      return;
+    }
+
+    if (!datasusState.library.length) {
+      datasusRefs.statusCardEl.className = 'status-bar';
+      datasusRefs.statusCardEl.textContent = 'Importe um arquivo DATASUS para iniciar o assistente.';
+      return;
+    }
+
+    const pairSuggestion = datasusState.suggestedPair;
+    const suggestionLabel = datasusState.suggestedMode === 'paired'
+      ? `t pareado sugerido (${pairSuggestion?.commonCount || 0} unidades em comum)`
+      : 't independente sugerido';
+    const allYears = datasusState.library.flatMap(entry => entry.parsed.years).map(Number).filter(Number.isFinite);
+    const minYear = allYears.length ? Math.min(...allYears) : '';
+    const maxYear = allYears.length ? Math.max(...allYears) : '';
+    const issuesHtml = datasusState.importIssues.length
+      ? `<div class="small-note" style="margin-top:14px;">Arquivos ignorados: ${utils.escapeHtml(datasusState.importIssues.map(issue => `${issue.fileName}: ${issue.message}`).join(' | '))}</div>`
+      : '';
+
+    datasusRefs.statusCardEl.className = 'info-banner';
+    datasusRefs.statusCardEl.innerHTML = `
+      <div class="metrics-grid tstudent-status-grid">
+        <div class="metric-card">
+          <div class="metric-label">Arquivos v\u00e1lidos</div>
+          <div class="metric-value">${datasusState.library.length}</div>
+          <div class="metric-mini">${datasusState.importIssues.length} arquivo(s) ignorado(s)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Sugest\u00e3o autom\u00e1tica</div>
+          <div class="metric-value tstudent-compact-value">${utils.escapeHtml(suggestionLabel)}</div>
+          <div class="metric-mini">Voc\u00ea pode aceitar a sugest\u00e3o ou trocar manualmente.</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Janela temporal detectada</div>
+          <div class="metric-value">${minYear && maxYear ? `${minYear}-${maxYear}` : '\u2014'}</div>
+          <div class="metric-mini">Os anos finais dependem do(s) arquivo(s) selecionado(s).</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Modo atual</div>
+          <div class="metric-value">${datasusState.analysisMode === 'paired' ? 't pareado' : 't independente'}</div>
+          <div class="metric-mini">Modo manual continua dispon\u00edvel na aba ao lado.</div>
+        </div>
+      </div>
+      <div class="tstudent-dataset-list" style="margin-top:14px;">
+        ${datasusState.library.map(buildEntryCard).join('')}
+      </div>
+      ${issuesHtml}
+    `;
+  }
+
+  function renderDatasusAnalysisStep() {
+    if (!datasusState.library.length) {
+      datasusRefs.analysisEl.innerHTML = '<div class="small-note">As op\u00e7\u00f5es do assistente aparecem ap\u00f3s a leitura de pelo menos um arquivo v\u00e1lido.</div>';
+      return;
+    }
+
+    const independentEntry = getActiveIndependentEntry();
+    const independentSelection = independentEntry ? getDatasusSelectionMap(independentEntry.id) : {};
+    const selectedIndependentGroups = Object.values(independentSelection).filter(Boolean);
+    const suggestionMessage = datasusState.suggestedMode === 'paired' && datasusState.suggestedPair
+      ? `Isso parece um cen\u00e1rio pareado: ${datasusState.suggestedPair.commonCount} unidades aparecem em dois arquivos compat\u00edveis.`
+      : selectedIndependentGroups.length >= 2
+        ? 'Isso parece compara\u00e7\u00e3o entre grupos independentes, porque as categorias selecionadas formam grupos distintos.'
+        : 'Sem pares fortes detectados, o assistente sugere come\u00e7ar pela compara\u00e7\u00e3o entre grupos independentes.';
+
+    datasusRefs.analysisEl.innerHTML = `
+      <div class="${datasusState.suggestedMode === 'paired' ? 'success-box' : 'status-bar'}">${utils.escapeHtml(suggestionMessage)}</div>
+      <div class="tstudent-choice-grid" style="margin-top:14px;">
+        <button type="button" class="tstudent-choice-card ${datasusState.analysisMode === 'paired' ? 'is-active' : ''}" data-analysis-mode="paired">
+          <strong>1. Comparar dois procedimentos</strong>
+          <span>Seleciona dois arquivos/procedimentos, alinha automaticamente as mesmas unidades e roda <strong>t pareado</strong>.</span>
+        </button>
+        <button type="button" class="tstudent-choice-card ${datasusState.analysisMode === 'independent' ? 'is-active' : ''}" data-analysis-mode="independent">
+          <strong>2. Comparar dois grupos diferentes</strong>
+          <span>Seleciona categorias do mesmo arquivo, resume por per\u00edodo e roda <strong>t independente (Welch)</strong>.</span>
+        </button>
+        <button type="button" class="tstudent-choice-card" data-analysis-mode="manual">
+          <strong>3. Modo manual</strong>
+          <span>Abre o fluxo original do m\u00f3dulo para colar os dados diretamente.</span>
+        </button>
+      </div>
+    `;
+
+    datasusRefs.analysisEl.querySelectorAll('[data-analysis-mode]').forEach(button => {
+      button.addEventListener('click', () => {
+        const target = button.dataset.analysisMode;
+        if (target === 'manual') {
+          setActiveModePanel('manual');
+          return;
+        }
+
+        datasusState.analysisMode = target;
+        ensurePeriodState();
+        renderDatasusImportStatus();
+        renderDatasusAnalysisStep();
+        renderDatasusSelectionStep();
+        renderDatasusPreview();
+        renderDatasusDerived();
+        invalidateDatasusRun();
+      });
+    });
+  }
 }
