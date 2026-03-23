@@ -19,7 +19,8 @@ import {
 
 const MANUAL_EMPTY_TEMPLATE_URL = new URL('./templates/modelo-t-student-vazio.csv', import.meta.url).href;
 const MANUAL_FILLED_TEMPLATE_URL = new URL('./templates/modelo-t-student-exemplo.csv', import.meta.url).href;
-const MANUAL_WIDE_FORMAT_LABEL = 'unidade | grupo_a | grupo_b | observacao_opcional';
+const MANUAL_WIDE_FORMAT_LABEL = 'unidade;grupo_a;grupo_b;observacao_opcional';
+const MANUAL_WIDE_PREVIEW_HEADERS = ['unidade', 'grupo_a', 'grupo_b', 'observacao_opcional'];
 const MANUAL_HEADER_ALIASES = {
   unidade: ['unidade', 'uf', 'unidade_analitica', 'unidade analitica', 'estado'],
   grupo_a: ['grupo_a', 'grupo a', 'grupo1', 'grupo_1', 'grupo 1'],
@@ -27,20 +28,25 @@ const MANUAL_HEADER_ALIASES = {
   observacao_opcional: ['observacao', 'observacao opcional', 'obs', 'comentario', 'comentario opcional']
 };
 const MANUAL_WIDE_EXAMPLE_ROWS = [
-  ['BA', '2,7', '2,9', 'exemplo'],
-  ['SP', '2,6', '2,6', ''],
-  ['MG', '2,2', '2,4', '']
+  ['Rondonia', '2,2', '2,2', ''],
+  ['Acre', '3', '3,3', ''],
+  ['Amazonas', '3,7', '2,8', ''],
+  ['Roraima', '2,9', '3,3', '']
 ];
+const MANUAL_WIDE_EXAMPLE_TEXT = [
+  MANUAL_WIDE_FORMAT_LABEL,
+  ...MANUAL_WIDE_EXAMPLE_ROWS.map(row => row.join(';'))
+].join('\n');
 const MANUAL_QUICK_EXAMPLES = {
   independent: {
     units: '',
-    groupA: ['2,7', '2,6', '2,2', '2,8'].join('\n'),
-    groupB: ['2,9', '2,6', '2,4', '3,0'].join('\n')
+    groupA: MANUAL_WIDE_EXAMPLE_ROWS.map(row => row[1]).join('\n'),
+    groupB: MANUAL_WIDE_EXAMPLE_ROWS.map(row => row[2]).join('\n')
   },
   paired: {
-    units: ['BA', 'SP', 'MG', 'PR'].join('\n'),
-    groupA: ['2,7', '2,6', '2,2', '2,8'].join('\n'),
-    groupB: ['2,9', '2,6', '2,4', '3,0'].join('\n')
+    units: MANUAL_WIDE_EXAMPLE_ROWS.map(row => row[0]).join('\n'),
+    groupA: MANUAL_WIDE_EXAMPLE_ROWS.map(row => row[1]).join('\n'),
+    groupB: MANUAL_WIDE_EXAMPLE_ROWS.map(row => row[2]).join('\n')
   }
 };
 
@@ -132,9 +138,10 @@ function detectManualDelimiter(lines) {
     commaScore += structuralCommaCount(line);
   });
 
-  if (tabScore > 0) return '\t';
-  if (semicolonScore > 0) return ';';
-  return commaScore > 0 ? ',' : '\t';
+  if (semicolonScore > 0 && semicolonScore >= tabScore && semicolonScore >= commaScore) return ';';
+  if (tabScore > 0 && tabScore >= commaScore) return '\t';
+  if (commaScore > 0) return ',';
+  return ';';
 }
 
 function delimiterLabel(delimiter) {
@@ -142,6 +149,55 @@ function delimiterLabel(delimiter) {
   if (delimiter === ';') return 'ponto e virgula';
   if (delimiter === ',') return 'virgula';
   return 'texto simples';
+}
+
+function normalizeManualNumericSource(raw) {
+  if (raw === null || raw === undefined) return '';
+
+  let source = String(raw)
+    .replace(/\u00A0/g, ' ')
+    .trim();
+
+  if (!source) return '';
+
+  source = source.replace(/\s+/g, '');
+  if (source.includes(',') && source.includes('.')) {
+    if (source.lastIndexOf(',') > source.lastIndexOf('.')) {
+      source = source.replace(/\./g, '').replace(',', '.');
+    } else {
+      source = source.replace(/,/g, '');
+    }
+  } else if (source.includes(',') && !source.includes('.')) {
+    source = source.replace(',', '.');
+  }
+
+  return source;
+}
+
+function parseManualNumericValue(raw, stats) {
+  const normalized = normalizeManualNumericSource(raw);
+  if (!normalized) return null;
+
+  const direct = Number(normalized);
+  if (Number.isFinite(direct)) return direct;
+
+  if (typeof stats?.parseNumber === 'function') {
+    return stats.parseNumber(normalized);
+  }
+
+  return null;
+}
+
+function rawUsesDecimalComma(raw) {
+  return /,\d/.test(String(raw || ''));
+}
+
+function describeIgnoredRowReason(index, notes = []) {
+  const first = String(notes[0] || 'linha sem valor numerico utilizavel.')
+    .trim()
+    .replace(/\.$/, '');
+  const normalized = first ? `${first.charAt(0).toLowerCase()}${first.slice(1)}` : 'a linha nao trouxe valores numericos validos';
+  return `A linha ${index} foi ignorada porque ${normalized}.`;
 }
 
 function splitQuickInputTokens(text, { numeric = false } = {}) {
@@ -177,7 +233,7 @@ function splitQuickInputTokens(text, { numeric = false } = {}) {
 function summarizeQuickInput(text, stats, { numeric = false } = {}) {
   const tokens = splitQuickInputTokens(text, { numeric });
   const valid = numeric
-    ? tokens.filter(item => stats.parseNumber(item.raw) !== null).length
+    ? tokens.filter(item => parseManualNumericValue(item.raw, stats) !== null).length
     : tokens.length;
 
   return {
@@ -244,8 +300,8 @@ function buildManualDatasetFromStructuredRows(options, stats) {
     const groupARaw = normalizeManualSpaces(row.groupARaw);
     const groupBRaw = normalizeManualSpaces(row.groupBRaw);
     const observationRaw = normalizeManualSpaces(row.observationRaw);
-    const groupAValue = stats.parseNumber(groupARaw);
-    const groupBValue = stats.parseNumber(groupBRaw);
+    const groupAValue = parseManualNumericValue(groupARaw, stats);
+    const groupBValue = parseManualNumericValue(groupBRaw, stats);
     const notes = [];
     const unitLabel = unitRaw || `Linha ${index + 1}`;
 
@@ -276,10 +332,10 @@ function buildManualDatasetFromStructuredRows(options, stats) {
           notes.push('Falta valor correspondente para formar o par.');
         }
         if (groupARaw && groupAValue === null) {
-          notes.push('Grupo A contem texto ou formato invalido.');
+          notes.push('grupo_a nao contem valor numerico valido.');
         }
         if (groupBRaw && groupBValue === null) {
-          notes.push('Grupo B contem texto ou formato invalido.');
+          notes.push('grupo_b nao contem valor numerico valido.');
         }
         if (!notes.length) {
           notes.push('Linha sem dois valores numericos utilizaveis.');
@@ -309,19 +365,19 @@ function buildManualDatasetFromStructuredRows(options, stats) {
         }
 
         if (groupARaw && groupAValue === null) {
-          notes.push('Texto em Grupo A foi ignorado.');
+          notes.push('grupo_a nao contem valor numerico valido.');
           ignoredByTextOrEmpty = true;
         }
         if (groupBRaw && groupBValue === null) {
-          notes.push('Texto em Grupo B foi ignorado.');
+          notes.push('grupo_b nao contem valor numerico valido.');
           ignoredByTextOrEmpty = true;
         }
       } else {
         if (groupARaw && groupAValue === null) {
-          notes.push('Grupo A contem texto ou formato invalido.');
+          notes.push('grupo_a nao contem valor numerico valido.');
         }
         if (groupBRaw && groupBValue === null) {
-          notes.push('Grupo B contem texto ou formato invalido.');
+          notes.push('grupo_b nao contem valor numerico valido.');
         }
         if (!groupARaw && !groupBRaw) {
           notes.push('Linha vazia nas duas colunas de grupo.');
@@ -365,6 +421,14 @@ function buildManualDatasetFromStructuredRows(options, stats) {
   const warnings = [];
   if (ignoredByTextOrEmpty && datasetRows.some(row => row.statusTone === 'ignored' || row.notes.length)) {
     warnings.push('Foram encontrados textos ou celulas vazias em linhas ignoradas.');
+  }
+  datasetRows
+    .filter(row => row.statusTone === 'ignored' && row.notes.length)
+    .slice(0, 3)
+    .forEach(row => warnings.push(describeIgnoredRowReason(row.index, row.notes)));
+  const extraIgnored = datasetRows.filter(row => row.statusTone === 'ignored' && row.notes.length).length - 3;
+  if (extraIgnored > 0) {
+    warnings.push(`Outras ${extraIgnored} linhas tambem foram ignoradas por ausencia de valor numerico valido.`);
   }
 
   const infos = [];
@@ -449,7 +513,7 @@ function parseDelimitedRows(text) {
   if (!lines.length) {
     return {
       rows: [],
-      delimiter: '\t',
+      delimiter: ';',
       formatLabel: 'texto'
     };
   }
@@ -460,7 +524,11 @@ function parseDelimitedRows(text) {
   return {
     rows,
     delimiter,
-    formatLabel: delimiter === '\t' ? 'TSV/TXT' : 'CSV/TXT'
+    formatLabel: delimiter === ';'
+      ? 'CSV com ponto e virgula'
+      : delimiter === '\t'
+        ? 'Tabela tabulada'
+        : 'CSV/TXT'
   };
 }
 
@@ -688,7 +756,7 @@ function findBestWideTableCandidate(tables, stats) {
       const groupAIndex = headerMatch.recognizedColumns.grupo_a.index;
       const groupBIndex = headerMatch.recognizedColumns.grupo_b.index;
       const numericRows = bodyRows.filter(row => (
-        stats.parseNumber(row[groupAIndex]) !== null || stats.parseNumber(row[groupBIndex]) !== null
+        parseManualNumericValue(row[groupAIndex], stats) !== null || parseManualNumericValue(row[groupBIndex], stats) !== null
       )).length;
       const score = (Object.keys(headerMatch.recognizedColumns).length * 100) + (numericRows * 10) - rowIndex;
 
@@ -712,6 +780,54 @@ function findBestWideTableCandidate(tables, stats) {
   return candidates[0];
 }
 
+function analyzeManualNumericFormatting(bodyRows, recognizedColumns, stats) {
+  const numericIndexes = [
+    recognizedColumns?.grupo_a?.index,
+    recognizedColumns?.grupo_b?.index
+  ].filter(Number.isInteger);
+
+  let decimalCommaDetected = false;
+  let numericCellCount = 0;
+
+  (bodyRows || []).forEach(row => {
+    numericIndexes.forEach(index => {
+      const raw = row?.[index] || '';
+      if (parseManualNumericValue(raw, stats) === null) return;
+      numericCellCount += 1;
+      if (rawUsesDecimalComma(raw)) {
+        decimalCommaDetected = true;
+      }
+    });
+  });
+
+  return {
+    decimalCommaDetected,
+    numericCellCount
+  };
+}
+
+function buildLoadedTabularState(candidate, extra = {}, stats) {
+  const formatting = analyzeManualNumericFormatting(candidate.bodyRows, candidate.recognizedColumns, stats);
+
+  return {
+    status: 'loaded',
+    fileName: extra.fileName || 'dados',
+    workbookKind: extra.workbookKind || 'text',
+    tableName: extra.tableName || candidate.table.name || 'Tabela principal',
+    formatLabel: extra.formatLabel || candidate.table.formatLabel || 'texto',
+    delimiter: extra.delimiter ?? candidate.table.delimiter ?? '',
+    headerRowIndex: candidate.headerRowIndex,
+    headers: candidate.headers,
+    bodyRows: candidate.bodyRows,
+    recognizedColumns: candidate.recognizedColumns,
+    duplicates: candidate.duplicates,
+    sheetNames: extra.sheetNames || [],
+    decimalCommaDetected: formatting.decimalCommaDetected,
+    numericCellCount: formatting.numericCellCount,
+    sourceType: extra.sourceType || 'file'
+  };
+}
+
 async function readManualFileState(file, utils, stats) {
   const fileName = normalizeManualSpaces(file?.name || 'arquivo');
 
@@ -732,20 +848,15 @@ async function readManualFileState(file, utils, stats) {
       };
     }
 
-    return {
-      status: 'loaded',
+    return buildLoadedTabularState(candidate, {
       fileName,
       workbookKind: workbook.kind,
       tableName: candidate.table.name,
       formatLabel: candidate.table.formatLabel || (workbook.kind === 'xlsx' ? 'XLSX' : 'texto'),
       delimiter: candidate.table.delimiter || '',
-      headerRowIndex: candidate.headerRowIndex,
-      headers: candidate.headers,
-      bodyRows: candidate.bodyRows,
-      recognizedColumns: candidate.recognizedColumns,
-      duplicates: candidate.duplicates,
-      sheetNames: availableNames
-    };
+      sheetNames: availableNames,
+      sourceType: 'file'
+    }, stats);
   } catch (error) {
     return {
       status: 'error',
@@ -756,9 +867,43 @@ async function readManualFileState(file, utils, stats) {
   }
 }
 
-function buildManualDatasetFromFileState(fileState, mode, stats) {
+function readManualPasteState(text, stats) {
+  const parsed = parseDelimitedRows(text);
+  const candidate = findBestWideTableCandidate([{
+    name: 'Conteudo colado',
+    rows: parsed.rows,
+    delimiter: parsed.delimiter,
+    formatLabel: parsed.formatLabel
+  }], stats);
+
+  if (!candidate) {
+    return {
+      status: 'error',
+      fileName: 'dados-colados',
+      message: `Nao encontramos colunas compativeis com o modelo: ${MANUAL_WIDE_FORMAT_LABEL}.`,
+      details: ['Cole a tabela com cabecalho no formato brasileiro ou use um arquivo CSV/XLSX/TXT compativel.'],
+      sourceType: 'paste'
+    };
+  }
+
+  return buildLoadedTabularState(candidate, {
+    fileName: 'dados-colados',
+    workbookKind: 'text',
+    tableName: 'Conteudo colado',
+    formatLabel: parsed.formatLabel,
+    delimiter: parsed.delimiter,
+    sourceType: 'paste'
+  }, stats);
+}
+
+function buildManualDatasetFromTabularState(fileState, mode, stats, sourceMeta = {}) {
+  const {
+    sourceKind = fileState?.sourceType || 'file',
+    sourceLabel = sourceKind === 'paste' ? 'Dados colados' : 'Arquivo lido'
+  } = sourceMeta;
+
   if (!fileState || fileState.status !== 'loaded') {
-    const dataset = buildEmptyManualDataset(mode, 'file', 'Arquivo lido');
+    const dataset = buildEmptyManualDataset(mode, sourceKind, sourceLabel);
     if (fileState?.message) dataset.errors.push(fileState.message);
     if (Array.isArray(fileState?.details)) dataset.infos.push(...fileState.details);
     dataset.hasContent = Boolean(fileState?.message);
@@ -774,8 +919,8 @@ function buildManualDatasetFromFileState(fileState, mode, stats) {
 
   const dataset = buildManualDatasetFromStructuredRows({
     mode,
-    sourceKind: 'file',
-    sourceLabel: 'Arquivo lido',
+    sourceKind,
+    sourceLabel,
     rows: mappedRows,
     recognizedColumns: fileState.recognizedColumns,
     fileMeta: {
@@ -783,7 +928,8 @@ function buildManualDatasetFromFileState(fileState, mode, stats) {
       tableName: fileState.tableName,
       formatLabel: fileState.formatLabel,
       delimiter: fileState.delimiter,
-      headerRowIndex: fileState.headerRowIndex
+      headerRowIndex: fileState.headerRowIndex,
+      sourceType: fileState.sourceType || sourceKind
     }
   }, stats);
 
@@ -792,6 +938,14 @@ function buildManualDatasetFromFileState(fileState, mode, stats) {
   }
   if (fileState.duplicates.length) {
     dataset.warnings.push(`Cabecalhos duplicados foram ignorados: ${fileState.duplicates.join(', ')}.`);
+  }
+  if (fileState.delimiter === ';') {
+    dataset.infos.unshift(`${sourceKind === 'paste' ? 'Conteudo colado' : 'Arquivo'} lido no padrao ponto e virgula (;).`);
+  } else if (fileState.delimiter === '\t') {
+    dataset.infos.unshift('Conteudo tabulado interpretado automaticamente.');
+  }
+  if (fileState.decimalCommaDetected) {
+    dataset.infos.unshift('Numeros com virgula decimal foram convertidos automaticamente.');
   }
 
   return dataset;
@@ -802,6 +956,9 @@ function buildManualPreviewTable(dataset, utils, limit = 14) {
   const note = dataset.rows.length > limit
     ? `<div class="small-note" style="margin-top:10px;">Mostrando ${limit} de ${dataset.rows.length} linhas interpretadas.</div>`
     : '';
+  const formatConverted = value => (value === null || value === undefined
+    ? '-'
+    : utils.fmtNumber(value, Math.abs(value) >= 100 ? 1 : 3));
 
   return `
     <div class="preview-table-wrap">
@@ -809,8 +966,10 @@ function buildManualPreviewTable(dataset, utils, limit = 14) {
         <thead>
           <tr>
             <th>Unidade</th>
-            <th>Grupo A</th>
-            <th>Grupo B</th>
+            <th>grupo_a bruto</th>
+            <th>grupo_b bruto</th>
+            <th>grupo_a convertido</th>
+            <th>grupo_b convertido</th>
             <th>Status</th>
             <th>Observacao</th>
           </tr>
@@ -821,6 +980,8 @@ function buildManualPreviewTable(dataset, utils, limit = 14) {
               <td>${utils.escapeHtml(row.unitLabel)}</td>
               <td>${utils.escapeHtml(row.groupARaw || '')}</td>
               <td>${utils.escapeHtml(row.groupBRaw || '')}</td>
+              <td>${utils.escapeHtml(formatConverted(row.groupAValue))}</td>
+              <td>${utils.escapeHtml(formatConverted(row.groupBValue))}</td>
               <td>
                 <div class="tstudent-preview-status ${row.statusTone}">
                   <strong>${utils.escapeHtml(row.statusLabel)}</strong>
@@ -829,7 +990,7 @@ function buildManualPreviewTable(dataset, utils, limit = 14) {
               </td>
               <td>${utils.escapeHtml(row.observationRaw || '')}</td>
             </tr>
-          `).join('') : '<tr><td colspan="5">Sem linhas para exibir.</td></tr>'}
+          `).join('') : '<tr><td colspan="7">Sem linhas para exibir.</td></tr>'}
         </tbody>
       </table>
     </div>
