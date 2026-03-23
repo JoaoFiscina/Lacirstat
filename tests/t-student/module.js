@@ -699,29 +699,40 @@ function renderAnalysisError(statusEl, metricsEl, chartEl, resultsEl, message) {
 function buildResultMetricsHtml(result, labels, utils) {
   return `
     <div class="metric-card">
-      <div class="metric-label">${utils.escapeHtml(labels[0])}</div>
+      <div class="metric-label">M\u00e9dia de ${utils.escapeHtml(labels[0])}</div>
       <div class="metric-value">${utils.fmtNumber(result.m1, 2)}</div>
-      <div class="metric-mini">n = ${result.n1} · DP = ${utils.fmtNumber(result.s1, 2)}</div>
+      <div class="metric-mini">n = ${result.n1} \u00b7 desvio-padr\u00e3o = ${utils.fmtNumber(result.s1, 2)}</div>
+      <div class="metric-note">Valor m\u00e9dio das observa\u00e7\u00f5es do grupo.</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">${utils.escapeHtml(labels[1])}</div>
+      <div class="metric-label">M\u00e9dia de ${utils.escapeHtml(labels[1])}</div>
       <div class="metric-value">${utils.fmtNumber(result.m2, 2)}</div>
-      <div class="metric-mini">n = ${result.n2} · DP = ${utils.fmtNumber(result.s2, 2)}</div>
+      <div class="metric-mini">n = ${result.n2} \u00b7 desvio-padr\u00e3o = ${utils.fmtNumber(result.s2, 2)}</div>
+      <div class="metric-note">Valor m\u00e9dio das observa\u00e7\u00f5es do grupo.</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">Diferenca entre medias</div>
+      <div class="metric-label">Diferen\u00e7a entre m\u00e9dias</div>
       <div class="metric-value">${utils.fmtSigned(result.diff, 2)}</div>
       <div class="metric-mini">IC95%: ${utils.fmtNumber(result.ci[0], 2)} a ${utils.fmtNumber(result.ci[1], 2)}</div>
+      <div class="metric-note">Quanto a m\u00e9dia do primeiro grupo difere da do segundo.</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">Estatistica t</div>
-      <div class="metric-value">${utils.fmtNumber(result.t, 3)}</div>
-      <div class="metric-mini">gl = ${utils.fmtNumber(result.df, 2)} · p = ${utils.fmtP(result.p)}</div>
+      <div class="metric-label">Evid\u00eancia estat\u00edstica</div>
+      <div class="metric-value">${utils.fmtP(result.p)}</div>
+      <div class="metric-mini">t = ${utils.fmtNumber(result.t, 3)} \u00b7 graus de liberdade = ${utils.fmtNumber(result.df, 2)}</div>
+      <div class="metric-note">Quanto menor o p-valor, maior a evid\u00eancia contra a hip\u00f3tese de m\u00e9dias iguais.</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">Cohen's d</div>
+      <div class="metric-label">Tamanho de efeito (Cohen&apos;s d)</div>
       <div class="metric-value">${utils.fmtSigned(result.d, 2)}</div>
-      <div class="metric-mini">Classificacao: ${utils.escapeHtml(classifyEffect(result.d))}</div>
+      <div class="metric-mini">Classifica\u00e7\u00e3o: ${utils.escapeHtml(classifyEffect(result.d))}</div>
+      <div class="metric-note">Ajuda a interpretar se a diferen\u00e7a \u00e9 pequena, moderada ou grande.</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Intervalo de confian\u00e7a de 95%</div>
+      <div class="metric-value tstudent-compact-value">${utils.fmtNumber(result.ci[0], 2)} a ${utils.fmtNumber(result.ci[1], 2)}</div>
+      <div class="metric-mini">Faixa plaus\u00edvel para a diferen\u00e7a entre as m\u00e9dias.</div>
+      <div class="metric-note">Se o intervalo cruza zero, a diferen\u00e7a pode ser compat\u00edvel com aus\u00eancia de efeito.</div>
     </div>
   `;
 }
