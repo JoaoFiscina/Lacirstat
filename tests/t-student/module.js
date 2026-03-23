@@ -76,9 +76,9 @@ function cleanCategoryLabel(value) {
 }
 
 function labelFromDelimiter(delimiter) {
-  if (delimiter === ';') return 'ponto e virgula';
-  if (delimiter === '\t') return 'tabulacao';
-  return 'virgula';
+  if (delimiter === ';') return 'ponto e v\u00edrgula';
+  if (delimiter === '\t') return 'tabula\u00e7\u00e3o';
+  return 'v\u00edrgula';
 }
 
 function isYearToken(token) {
