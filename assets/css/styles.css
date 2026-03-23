@@ -744,6 +744,76 @@ input[type="file"] {
 .tstudent-module .tstudent-mode-panel.active {
   display: grid;
 }
+.tstudent-module .tstudent-manual-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.tstudent-module .tstudent-quick-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+.tstudent-module .tstudent-input-block {
+  border: 1px solid rgba(216, 226, 240, 0.95);
+  border-radius: 18px;
+  padding: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.tstudent-module .tstudent-input-block-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.tstudent-module .tstudent-input-block h5 {
+  margin: 0;
+  font-size: 1rem;
+  color: #1f3247;
+}
+.tstudent-module .tstudent-input-block textarea {
+  min-height: 180px;
+}
+.tstudent-module .tstudent-input-block-aux {
+  display: none;
+}
+.tstudent-module .tstudent-input-block-aux.is-visible {
+  display: grid;
+  grid-column: 1 / -1;
+}
+.tstudent-module .tstudent-manual-source-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px;
+  border: 1px solid rgba(206, 220, 238, 0.95);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
+}
+.tstudent-module .tstudent-source-btn {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 700;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: .18s ease;
+}
+.tstudent-module .tstudent-source-btn.is-active {
+  background: linear-gradient(180deg, rgba(20,184,166,0.12) 0%, rgba(37,99,235,0.10) 100%);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+.tstudent-module .tstudent-source-btn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
 .tstudent-module .tstudent-step-head {
   display: flex;
   flex-wrap: wrap;
@@ -901,6 +971,28 @@ input[type="file"] {
 .tstudent-module .tstudent-inline-list li + li {
   margin-top: 6px;
 }
+.tstudent-module .tstudent-manual-preview-table th,
+.tstudent-module .tstudent-manual-preview-table td {
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.tstudent-module .tstudent-preview-row-ignored {
+  background: rgba(239, 68, 68, 0.04);
+}
+.tstudent-module .tstudent-preview-row-valid {
+  background: rgba(15, 118, 110, 0.02);
+}
+.tstudent-module .tstudent-preview-status {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.tstudent-module .tstudent-preview-status small {
+  color: var(--muted);
+  line-height: 1.45;
+}
 .tstudent-module .tstudent-group-picker {
   margin-top: 16px;
   border: 1px solid rgba(216, 226, 240, 0.95);
@@ -1053,6 +1145,11 @@ input[type="file"] {
     grid-template-columns: 1fr;
   }
 
+  .tstudent-module .tstudent-manual-mode-grid,
+  .tstudent-module .tstudent-quick-entry-grid {
+    grid-template-columns: 1fr;
+  }
+
   .tstudent-module .tstudent-group-picker-head,
   .tstudent-module .tstudent-group-row {
     grid-template-columns: minmax(0, 1fr) 72px 72px;
@@ -1071,6 +1168,10 @@ input[type="file"] {
 @media (max-width: 760px) {
   .tstudent-module .surface-card {
     padding: 18px;
+  }
+
+  .tstudent-module .tstudent-source-btn {
+    width: 100%;
   }
 
   .tstudent-module .scatter-svg,

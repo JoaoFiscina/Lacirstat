@@ -1,7 +1,7 @@
 {
   "title": "t de Student guiado para DATASUS",
   "subtitle": "Compara\u00e7\u00e3o did\u00e1tica entre duas m\u00e9dias",
-  "description": "Este m\u00f3dulo agora funciona como um assistente de an\u00e1lise para o DATASUS: ajuda a escolher entre compara\u00e7\u00e3o pareada ou independente, monta a base derivada automaticamente, executa o teste t adequado e preserva o modo manual original.",
+  "description": "Este m\u00f3dulo combina um assistente DATASUS com uma entrada manual r\u00e1pida para t de Student. O fluxo principal agora prioriza colagem simples e upload de planilhas no formato wide: unidade, grupo_a, grupo_b e observacao_opcional.",
   "defaultQuestion": "As m\u00e9dias dos dois grupos s\u00e3o diferentes?",
   "defaultDatasusQuestion": "H\u00e1 diferen\u00e7a m\u00e9dia entre as sele\u00e7\u00f5es comparadas no DATASUS?",
   "didacticCards": [
@@ -15,7 +15,7 @@
     },
     {
       "title": "Independentes x pareados",
-      "text": "Aqui os grupos s\u00e3o independentes. Para antes e depois das mesmas pessoas, o teste adequado \u00e9 o t pareado."
+      "text": "Use t independente para grupos distintos e t pareado quando a mesma unidade aparece nas duas colunas, na mesma ordem."
     },
     {
       "title": "Cuidados antes de interpretar",

@@ -855,7 +855,7 @@ function buildManualPairedInterpretation(result, alpha, question, utils) {
   return buildGuidedInterpretation(result, {
     mode: 'paired',
     groupLabels: ['Grupo A', 'Grupo B'],
-    periodLabel: 'entrada manual'
+    periodLabel: 'informado manualmente'
   }, alpha, question, utils);
 }
 
@@ -1316,6 +1316,7 @@ export async function renderTestModule(ctx) {
   }
 
   function refreshManualPreviewLegacy() {
+    return refreshManualPreview();
     const parsed = null;
 
     if (!parsed.previewRows.length) {
@@ -1339,6 +1340,7 @@ export async function renderTestModule(ctx) {
   }
 
   function runManualAnalysisLegacy() {
+    return runManualAnalysis();
     const parsed = refreshManualPreview();
     const alpha = Number(manual.alphaEl.value || 0.05);
 
@@ -1366,7 +1368,8 @@ export async function renderTestModule(ctx) {
   }
 
   function clearManualLegacy() {
-    manual.pasteEl.value = '';
+    return clearManual();
+    manual.groupAEl.value = '';
     manual.contextEl.value = defaultManualQuestion;
     manual.alphaEl.value = '0.05';
     manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
