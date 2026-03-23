@@ -59,7 +59,12 @@ function detectDelimiter(lines) {
 }
 
 function normalizeSpaces(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim();
+  return String(value || '')
+    .replace(/\uFEFF/g, '')
+    .replace(/\u0000/g, '')
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function normalizeToken(value) {
@@ -67,6 +72,12 @@ function normalizeToken(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+}
+
+function truncateDisplayLabel(value, maxLength = 28) {
+  const normalized = normalizeSpaces(value);
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 }
 
 function cleanCategoryLabel(value) {
@@ -611,18 +622,20 @@ function safeWelch(g1, g2, stats) {
 }
 
 function buildDistributionSvg(g1, g2, label1, label2, stats, utils) {
-  const width = 860;
+  const width = 760;
   const height = 420;
-  const margin = { top: 24, right: 24, bottom: 56, left: 86 };
+  const margin = { top: 24, right: 24, bottom: 68, left: 74 };
   const all = [...g1, ...g2];
   const min = Math.min(...all);
   const max = Math.max(...all);
   const pad = (max - min || 1) * 0.1;
   const yMin = min - pad;
   const yMax = max + pad;
+  const displayLabel1 = truncateDisplayLabel(label1, 22);
+  const displayLabel2 = truncateDisplayLabel(label2, 22);
 
   const y = value => height - margin.bottom - ((value - yMin) / (yMax - yMin || 1)) * (height - margin.top - margin.bottom);
-  const xCenters = [290, 590];
+  const xCenters = [240, 520];
   const jitter = index => ((index % 10) - 4.5) * 5;
   const ticks = Array.from({ length: 6 }, (_, index) => yMin + ((yMax - yMin) * index) / 5);
 
@@ -649,16 +662,16 @@ function buildDistributionSvg(g1, g2, label1, label2, stats, utils) {
       <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#8da1bc"/>
       ${drawGroup(g1, xCenters[0], '#2563eb', label1)}
       ${drawGroup(g2, xCenters[1], '#0f766e', label2)}
-      <text x="${xCenters[0]}" y="${height - 18}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(label1)}</text>
-      <text x="${xCenters[1]}" y="${height - 18}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(label2)}</text>
+      <text x="${xCenters[0]}" y="${height - 22}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(displayLabel1)}</text>
+      <text x="${xCenters[1]}" y="${height - 22}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(displayLabel2)}</text>
     </svg>
   `;
 }
 
 function buildMeanCiSvg(result, labels, utils) {
-  const width = 860;
+  const width = 760;
   const height = 300;
-  const margin = { top: 28, right: 24, bottom: 56, left: 86 };
+  const margin = { top: 28, right: 24, bottom: 68, left: 74 };
   const vals = [result.m1, result.m2, result.ci[0], result.ci[1]];
   const min = Math.min(...vals);
   const max = Math.max(...vals);
@@ -666,8 +679,10 @@ function buildMeanCiSvg(result, labels, utils) {
   const yMin = min - pad;
   const yMax = max + pad;
   const y = value => height - margin.bottom - ((value - yMin) / (yMax - yMin || 1)) * (height - margin.top - margin.bottom);
-  const x1 = 290;
-  const x2 = 590;
+  const x1 = 240;
+  const x2 = 520;
+  const displayLabel1 = truncateDisplayLabel(labels[0], 20);
+  const displayLabel2 = truncateDisplayLabel(labels[1], 20);
 
   return `
     <svg class="groupplot-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="M\u00e9dias e intervalo de confian\u00e7a">
@@ -681,9 +696,9 @@ function buildMeanCiSvg(result, labels, utils) {
       <line x1="${width / 2}" y1="${y(result.ci[0]).toFixed(2)}" x2="${width / 2}" y2="${y(result.ci[1]).toFixed(2)}" stroke="#1e293b" stroke-width="3"/>
       <line x1="${width / 2 - 16}" y1="${y(result.ci[0]).toFixed(2)}" x2="${width / 2 + 16}" y2="${y(result.ci[0]).toFixed(2)}" stroke="#1e293b" stroke-width="3"/>
       <line x1="${width / 2 - 16}" y1="${y(result.ci[1]).toFixed(2)}" x2="${width / 2 + 16}" y2="${y(result.ci[1]).toFixed(2)}" stroke="#1e293b" stroke-width="3"/>
-      <text x="${x1}" y="${height - 20}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(labels[0])}</text>
-      <text x="${x2}" y="${height - 20}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(labels[1])}</text>
-      <text x="${width / 2}" y="${margin.top}" text-anchor="middle" fill="#334155" font-size="12" font-weight="700">IC95% da diferen\u00e7a (${utils.escapeHtml(labels[0])} - ${utils.escapeHtml(labels[1])})</text>
+      <text x="${x1}" y="${height - 22}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(displayLabel1)}</text>
+      <text x="${x2}" y="${height - 22}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(displayLabel2)}</text>
+      <text x="${width / 2}" y="${margin.top}" text-anchor="middle" fill="#334155" font-size="12" font-weight="700">IC95% da diferen\u00e7a (${utils.escapeHtml(displayLabel1)} - ${utils.escapeHtml(displayLabel2)})</text>
     </svg>
   `;
 }
@@ -1180,7 +1195,7 @@ export async function renderTestModule(ctx) {
     if (datasusState.error) {
       datasusRefs.statusCardEl.className = 'error-box';
       datasusRefs.statusCardEl.innerHTML = datasusState.fileName
-        ? `<strong>${utils.escapeHtml(datasusState.fileName)}</strong><br>${utils.escapeHtml(datasusState.error)}`
+        ? `<div class="tstudent-file-status"><strong class="tstudent-file-name" title="${utils.escapeHtml(datasusState.fileName)}">${utils.escapeHtml(datasusState.fileName)}</strong><div>${utils.escapeHtml(datasusState.error)}</div></div>`
         : utils.escapeHtml(datasusState.error);
       return;
     }
@@ -1667,7 +1682,7 @@ export async function renderTestModule(ctx) {
     if (datasusState.error) {
       datasusRefs.statusCardEl.className = 'error-box';
       datasusRefs.statusCardEl.innerHTML = datasusState.fileName
-        ? `<strong>${utils.escapeHtml(datasusState.fileName)}</strong><br>${utils.escapeHtml(datasusState.error)}`
+        ? `<div class="tstudent-file-status"><strong class="tstudent-file-name" title="${utils.escapeHtml(datasusState.fileName)}">${utils.escapeHtml(datasusState.fileName)}</strong><div>${utils.escapeHtml(datasusState.error)}</div></div>`
         : utils.escapeHtml(datasusState.error);
       return;
     }
@@ -1686,7 +1701,7 @@ export async function renderTestModule(ctx) {
       <div class="metrics-grid tstudent-status-grid">
         <div class="metric-card">
           <div class="metric-label">Arquivo ativo</div>
-          <div class="metric-value tstudent-compact-value">${utils.escapeHtml(datasusState.fileName)}</div>
+          <div class="metric-value tstudent-compact-value tstudent-file-name" title="${utils.escapeHtml(datasusState.fileName)}">${utils.escapeHtml(datasusState.fileName)}</div>
           <div class="metric-mini">${datasusState.activeSource === 'upload' ? 'Arquivo enviado pelo usu\u00e1rio' : 'Exemplo carregado internamente'}</div>
         </div>
         <div class="metric-card">
@@ -1825,12 +1840,14 @@ export async function renderTestModule(ctx) {
           <tbody>
             ${visibleRows.map(row => {
               const selectedGroup = datasusState.selectionMap[row.id] || 'none';
-              const rawNote = row.cleanLabel !== row.rowLabel ? `<div class="small-note">Original: ${utils.escapeHtml(row.rowLabel)}</div>` : '';
+              const rawNote = row.cleanLabel !== row.rowLabel ? `<div class="small-note" title="${utils.escapeHtml(row.rowLabel)}">Original: ${utils.escapeHtml(row.rowLabel)}</div>` : '';
               return `
                 <tr class="${row.isTotalRow ? 'tstudent-total-option' : ''}">
-                  <td>
-                    <strong>${utils.escapeHtml(row.cleanLabel)}</strong>
-                    ${rawNote}
+                  <td class="tstudent-assignment-label">
+                    <div class="tstudent-row-label">
+                      <strong title="${utils.escapeHtml(row.cleanLabel)}">${utils.escapeHtml(row.cleanLabel)}</strong>
+                      ${rawNote}
+                    </div>
                   </td>
                   <td class="tstudent-radio-cell"><input type="radio" name="datasus-group-${utils.escapeHtml(row.id)}" value="none" data-role="datasus-group" data-row-id="${utils.escapeHtml(row.id)}"${selectedGroup === 'none' ? ' checked' : ''}></td>
                   <td class="tstudent-radio-cell"><input type="radio" name="datasus-group-${utils.escapeHtml(row.id)}" value="A" data-role="datasus-group" data-row-id="${utils.escapeHtml(row.id)}"${selectedGroup === 'A' ? ' checked' : ''}></td>
@@ -1920,11 +1937,11 @@ export async function renderTestModule(ctx) {
         <ul class="tstudent-derived-list">
           ${rows.map(row => `
             <li>
-              <span>
+              <span title="${utils.escapeHtml(row.rowLabel)}">
                 <strong>${utils.escapeHtml(row.rowLabel)}</strong>
                 <small>Anos usados: ${utils.escapeHtml(row.validYears.join(', '))}</small>
               </span>
-              <strong>${utils.fmtNumber(row.value, 2)}</strong>
+              <strong class="tstudent-derived-value">${utils.fmtNumber(row.value, 2)}</strong>
             </li>
           `).join('')}
         </ul>
@@ -1993,13 +2010,19 @@ export async function renderTestModule(ctx) {
   function hydrateDatasusParsed(text, fileName, sourceKind = 'upload') {
     resetDatasusImportedState();
     datasusState.activeSource = sourceKind;
-    datasusState.fileName = fileName || '';
-    datasusState.sourceText = text || '';
+    const normalizedText = typeof utils.normalizeImportedText === 'function'
+      ? utils.normalizeImportedText(text || '')
+      : String(text || '');
+    const normalizedFileName = typeof utils.normalizeImportedLabel === 'function'
+      ? utils.normalizeImportedLabel(fileName || '')
+      : String(fileName || '');
+    datasusState.fileName = normalizedFileName;
+    datasusState.sourceText = normalizedText;
     if (sourceKind !== 'upload') {
       datasusRefs.fileEl.value = '';
     }
 
-    const parsed = parseDatasusDataset(text, stats);
+    const parsed = parseDatasusDataset(normalizedText, stats);
     if (!parsed.ok) {
       datasusState.error = parsed.error || 'N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.';
       renderDatasusImportStatus();
