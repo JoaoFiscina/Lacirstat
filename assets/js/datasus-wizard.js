@@ -418,7 +418,15 @@ export function createDatasusWizard({
       state.statusTone = 'status';
       state.statusMessage = files.length === 1 ? 'Lendo arquivo DATASUS...' : 'Lendo arquivos DATASUS...';
       render();
-      await addFiles(files);
+      try {
+        await addFiles(files);
+      } catch (error) {
+        console.error('[datasus-wizard] Falha ao importar arquivo DATASUS.', error);
+        state.statusTone = 'error';
+        state.statusMessage = error?.message || 'Nao foi possivel concluir a importacao DATASUS.';
+        render();
+        notify();
+      }
     });
 
     root.querySelectorAll('[data-source-id]').forEach(button => {
@@ -530,28 +538,44 @@ export function createDatasusWizard({
     }));
 
     const failures = loaded.filter(item => !item.ok);
-    if (failures.length) {
-      state.statusTone = failures.length === loaded.length ? 'error' : 'status';
-      state.statusMessage = failures.map(item => `${item.fileName}: ${item.error}`).join(' | ');
-    }
+    const sources = [];
 
-    const sources = loaded.filter(item => item.ok).map((item, index) => ({
-      id: `datasus-source-${state.nextId + index + 1}`,
-      fileName: item.fileName,
-      rawText: item.rawText,
-      sourceKind: item.sourceKind
-    }));
+    loaded.filter(item => item.ok).forEach(item => {
+      const source = {
+        id: `datasus-source-${state.nextId + 1}`,
+        fileName: item.fileName,
+        rawText: item.rawText,
+        sourceKind: item.sourceKind
+      };
 
-    sources.forEach(source => {
-      state.nextId += 1;
-      reparseSource(source, utils, stats);
-      state.sources.push(source);
+      try {
+        state.nextId += 1;
+        reparseSource(source, utils, stats);
+        state.sources.push(source);
+        sources.push(source);
+      } catch (error) {
+        console.error(`[datasus-wizard] Falha ao interpretar ${item.fileName}.`, error);
+        failures.push({
+          ok: false,
+          fileName: item.fileName,
+          error: error?.message || 'Nao foi possivel interpretar o arquivo DATASUS.'
+        });
+      }
     });
 
     if (sources.length) {
       state.activeSourceId = sources[0].id;
+    }
+
+    if (sources.length && failures.length) {
+      state.statusTone = 'status';
+      state.statusMessage = `${sources.length} arquivo(s) DATASUS carregado(s). Alguns itens precisaram de revisao: ${failures.map(item => `${item.fileName}: ${item.error}`).join(' | ')}`;
+    } else if (sources.length) {
       state.statusTone = 'success';
       state.statusMessage = `${sources.length} arquivo(s) DATASUS carregado(s). Revise o mapeamento antes de confirmar.`;
+    } else if (failures.length) {
+      state.statusTone = 'error';
+      state.statusMessage = failures.map(item => `${item.fileName}: ${item.error}`).join(' | ');
     }
 
     render();
@@ -559,6 +583,9 @@ export function createDatasusWizard({
   }
 
   async function addTextSources(textSources, successMessage = 'Fonte DATASUS carregada.') {
+    const failures = [];
+    let loadedCount = 0;
+
     textSources.forEach(item => {
       const source = {
         id: `datasus-source-${state.nextId + 1}`,
@@ -566,16 +593,30 @@ export function createDatasusWizard({
         rawText: item.text || '',
         sourceKind: item.sourceKind || 'example'
       };
-      state.nextId += 1;
-      reparseSource(source, utils, stats);
-      state.sources.push(source);
-      if (!state.activeSourceId) state.activeSourceId = source.id;
+
+      try {
+        state.nextId += 1;
+        reparseSource(source, utils, stats);
+        state.sources.push(source);
+        loadedCount += 1;
+        if (!state.activeSourceId) state.activeSourceId = source.id;
+      } catch (error) {
+        console.error(`[datasus-wizard] Falha ao preparar ${source.fileName}.`, error);
+        failures.push(`${source.fileName}: ${error?.message || 'Nao foi possivel interpretar a fonte DATASUS.'}`);
+      }
     });
 
-    if (textSources.length) {
+    if (loadedCount && failures.length) {
+      state.activeSourceId = state.activeSourceId || state.sources[0]?.id || '';
+      state.statusTone = 'status';
+      state.statusMessage = `${successMessage} Alguns itens precisaram de revisao: ${failures.join(' | ')}`;
+    } else if (loadedCount) {
       state.activeSourceId = state.activeSourceId || state.sources[0]?.id || '';
       state.statusTone = 'success';
       state.statusMessage = successMessage;
+    } else if (failures.length) {
+      state.statusTone = 'error';
+      state.statusMessage = failures.join(' | ');
     }
 
     render();
