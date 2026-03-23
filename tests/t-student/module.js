@@ -796,6 +796,74 @@ function buildDatasusInterpretation(result, derived, alpha, question, utils) {
   `;
 }
 
+function cleanCategoryLabel(value) {
+  const normalized = normalizeSpaces(value).replace(/^\uFEFF+/, '');
+  const withoutIndex = normalized.replace(/^\(?\d+\)?(?:[.\-])?\s+(?=[A-Z\u00c0-\u00d6\u00d8-\u00de])/u, '').trim();
+  return withoutIndex || normalized;
+}
+
+function buildResultChartsHtml(result, labels, g1, g2, stats, utils) {
+  return `
+    <article class="chart-card">
+      <h4>Gr\u00e1fico 1 \u00b7 Distribui\u00e7\u00e3o e dispers\u00e3o por grupo</h4>
+      <div class="chart-wrap">${buildDistributionSvg(g1, g2, labels[0], labels[1], stats, utils)}</div>
+      <div class="small-note" style="margin-top:10px;">Cada ponto representa uma observa\u00e7\u00e3o, com resumo visual da dispers\u00e3o e da m\u00e9dia de cada grupo.</div>
+    </article>
+    <article class="chart-card">
+      <h4>Gr\u00e1fico 2 \u00b7 Compara\u00e7\u00e3o de m\u00e9dias e IC95%</h4>
+      <div class="chart-wrap">${buildMeanCiSvg(result, labels, utils)}</div>
+      <div class="small-note" style="margin-top:10px;">A barra central indica o IC95% da diferen\u00e7a (${utils.escapeHtml(labels[0])} - ${utils.escapeHtml(labels[1])}).</div>
+    </article>
+  `;
+}
+
+function buildManualInterpretation(result, alpha, labels, question, utils) {
+  const effectClass = classifyEffect(result.d);
+  const higherGroup = result.diff >= 0 ? labels[0] : labels[1];
+  const diffAbs = Math.abs(result.diff);
+  const significant = result.p < alpha;
+  const paragraph = significant
+    ? `Observou-se diferen\u00e7a estatisticamente significativa entre a m\u00e9dia de ${labels[0]} e ${labels[1]}. A m\u00e9dia foi maior em ${higherGroup}, com diferen\u00e7a m\u00e9dia de ${utils.fmtNumber(diffAbs, 2)} unidades.`
+    : `N\u00e3o se observou diferen\u00e7a estatisticamente significativa entre as m\u00e9dias de ${labels[0]} e ${labels[1]}. Ainda assim, ${higherGroup} apresentou m\u00e9dia numericamente maior, com diferen\u00e7a m\u00e9dia de ${utils.fmtNumber(diffAbs, 2)} unidades.`;
+
+  return `
+    ${utils.buildInterpretationCard('Interpreta\u00e7\u00e3o autom\u00e1tica', paragraph, [
+      `Pergunta analisada: ${question || 'Compara\u00e7\u00e3o entre duas m\u00e9dias independentes'}.`,
+      `Resultado principal: t = ${utils.fmtNumber(result.t, 3)}, gl = ${utils.fmtNumber(result.df, 2)}, p = ${utils.fmtP(result.p)}.`,
+      `Tamanho de efeito: ${effectClass}. Em termos pr\u00e1ticos, isso indica uma magnitude ${effectClass} da diferen\u00e7a.`,
+      `Grupo com maior m\u00e9dia: ${higherGroup}.`
+    ])}
+    <div class="result-card">
+      <h4>Leitura did\u00e1tica final</h4>
+      <ul>
+        <li>Grupo com maior m\u00e9dia: <strong>${utils.escapeHtml(higherGroup)}</strong>.</li>
+        <li>Diferen\u00e7a observada: <strong>${utils.fmtSigned(result.diff, 2)}</strong> unidades.</li>
+        <li>Classifica\u00e7\u00e3o do efeito: <strong>${utils.escapeHtml(effectClass)}</strong>.</li>
+      </ul>
+    </div>
+  `;
+}
+
+function buildDatasusInterpretation(result, derived, alpha, question, utils) {
+  const significant = result.p < alpha;
+  const higherGroup = result.diff >= 0 ? 'Grupo A' : 'Grupo B';
+  const paragraph = significant
+    ? `Ap\u00f3s resumir os valores anuais dentro do per\u00edodo selecionado para cada categoria e comparar os grupos definidos pelo usu\u00e1rio, observou-se diferen\u00e7a estatisticamente significativa entre Grupo A e Grupo B. A m\u00e9dia foi maior em ${higherGroup}.`
+    : `Ap\u00f3s resumir os valores anuais dentro do per\u00edodo selecionado para cada categoria e comparar os grupos definidos pelo usu\u00e1rio, n\u00e3o se observou diferen\u00e7a estatisticamente significativa entre Grupo A e Grupo B. Ainda assim, a m\u00e9dia foi numericamente maior em ${higherGroup}.`;
+
+  return `
+    ${utils.buildInterpretationCard('Interpreta\u00e7\u00e3o autom\u00e1tica', paragraph, [
+      `Pergunta analisada: ${question || 'Compara\u00e7\u00e3o entre dois grupos de categorias'}.`,
+      `Per\u00edodo analisado: ${derived.periodLabel}.`,
+      `Grupo A: ${joinRegionList(derived.groupRegions.A)}.`,
+      `Grupo B: ${joinRegionList(derived.groupRegions.B)}.`,
+      'Resumo utilizado: m\u00e9dia por categoria dentro do per\u00edodo selecionado, mantendo cada categoria como uma observa\u00e7\u00e3o separada.',
+      `Grupo com maior m\u00e9dia resumida: ${higherGroup}.`,
+      `Resultado principal: t = ${utils.fmtNumber(result.t, 3)}, gl = ${utils.fmtNumber(result.df, 2)}, p = ${utils.fmtP(result.p)}.`
+    ])}
+  `;
+}
+
 export async function renderTestModule(ctx) {
   const { root, config, utils, stats } = ctx;
   root.classList.add('tstudent-module');
@@ -934,7 +1002,7 @@ export async function renderTestModule(ctx) {
         <section class="surface-card tstudent-statistics-section">
           <h4>Resultados estat\u00edsticos</h4>
           <p class="small-note tstudent-section-note">Resumo num\u00e9rico do contraste entre os grupos derivados do arquivo importado.</p>
-          <div id="t-datasus-result-status" class="status-bar">Aguardando importacao de arquivo.</div>
+          <div id="t-datasus-result-status" class="status-bar">Aguardando importa\u00e7\u00e3o de arquivo.</div>
           <div id="t-datasus-metrics" class="metrics-grid" style="margin-top:14px;"></div>
         </section>
 
