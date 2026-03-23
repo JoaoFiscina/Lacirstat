@@ -107,6 +107,10 @@ button, input, textarea, select { font: inherit; }
   font-size: 12px;
   font-weight: 800;
   letter-spacing: .02em;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .brand-badge,
 .hero-kicker,
