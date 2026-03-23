@@ -2345,6 +2345,10 @@ export async function renderTestModule(ctx) {
   }
 
   function mountWizard() {
+    if (isMissingElementRef(datasusRefs.wizardEl)) {
+      warnMissingUi('wizard DATASUS', '#t-datasus-wizard', 'A etapa DATASUS nao sera montada nesta renderizacao.');
+      return;
+    }
     createDatasusWizard({
       root: datasusRefs.wizardEl,
       utils,
@@ -2363,37 +2367,39 @@ export async function renderTestModule(ctx) {
     });
   }
 
-  root.querySelectorAll('.tstudent-mode-btn').forEach(button => {
-    button.addEventListener('click', () => {
-      setActiveModePanel(button.dataset.modeTarget);
-    });
-  });
+  safeBindAll(root, '.tstudent-mode-btn', 'click', event => {
+    setActiveModePanel(event.currentTarget.dataset.modeTarget);
+  }, { label: 'alternancia entre paineis do modulo' });
 
-  manual.modeButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      setManualAnalysisMode(button.dataset.manualAnalysis);
-    });
-  });
-  manual.sourceButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      setManualSource(button.dataset.manualSource);
-    });
-  });
-  root.querySelector('#t-example').addEventListener('click', applyManualExample);
-  root.querySelector('#t-run').addEventListener('click', runManualAnalysis);
-  root.querySelector('#t-clear').addEventListener('click', clearManual);
-  [manual.groupAEl, manual.groupBEl, manual.unitsEl].forEach(input => {
-    input.addEventListener('input', () => {
-      manualState.activeSource = 'quick';
-      refreshManualPreview();
-      invalidateManualResults('Entrada manual atualizada. Revise a base antes de rodar o teste.');
-    });
-  });
-  manual.fileEl.addEventListener('change', handleManualFile);
+  safeBindAll(root, '[data-manual-analysis]', 'click', event => {
+    setManualAnalysisMode(event.currentTarget.dataset.manualAnalysis);
+  }, { label: 'alternancia entre modos do t manual' });
 
-  datasusRefs.contextEl.addEventListener('input', () => invalidateDatasusResults('Texto interpretativo atualizado. Rode novamente para refletir a nova pergunta.'));
-  datasusRefs.alphaEl.addEventListener('change', () => invalidateDatasusResults('Nivel de significancia atualizado. Rode novamente para recalcular a leitura final.'));
-  datasusRefs.runBtn.addEventListener('click', runDatasusAnalysis);
+  safeBindAll(root, '[data-manual-source]', 'click', event => {
+    setManualSource(event.currentTarget.dataset.manualSource);
+  }, { label: 'alternancia entre fontes do modo manual' });
+
+  safeBind(root, '#t-example', 'click', applyManualExample, { label: 'botao usar exemplo', optional: true });
+  safeBind(root, '#t-run', 'click', runManualAnalysis, { label: 'botao rodar teste', optional: true });
+  safeBind(root, '#t-clear', 'click', clearManual, { label: 'botao limpar', optional: true });
+
+  const handleManualInput = () => {
+    manualState.activeSource = 'quick';
+    refreshManualPreview();
+    invalidateManualResults('Entrada manual atualizada. Revise a base antes de rodar o teste.');
+  };
+  safeBind(root, '#t-group-a', 'input', handleManualInput, { label: 'campo do Grupo A' });
+  safeBind(root, '#t-group-b', 'input', handleManualInput, { label: 'campo do Grupo B' });
+  safeBind(root, '#t-units', 'input', handleManualInput, { label: 'campo de unidades', optional: true });
+  safeBind(root, '#t-file', 'change', handleManualFile, { label: 'upload manual', optional: true });
+
+  safeBind(root, '#t-datasus-context', 'input', () => {
+    invalidateDatasusResults('Texto interpretativo atualizado. Rode novamente para refletir a nova pergunta.');
+  }, { label: 'pergunta DATASUS', optional: true });
+  safeBind(root, '#t-datasus-alpha', 'change', () => {
+    invalidateDatasusResults('Nivel de significancia atualizado. Rode novamente para recalcular a leitura final.');
+  }, { label: 'alpha DATASUS', optional: true });
+  safeBind(root, '#t-datasus-run', 'click', runDatasusAnalysis, { label: 'botao rodar DATASUS', optional: true });
 
   refreshManualPreview();
   invalidateManualResults('Cole os dados ou leia um arquivo no formato padrao para iniciar.');
@@ -2402,4 +2408,17 @@ export async function renderTestModule(ctx) {
   renderDatasusSelection();
   renderDatasusDerived();
   invalidateDatasusResults('Aguardando base derivada valida.');
+  } catch (error) {
+    console.error('[t-student] Falha ao renderizar o modulo t de Student.', error);
+    root.innerHTML = `
+      <div class="module-grid">
+        <section class="surface-card">
+          <div class="error-box">
+            <strong>Nao foi possivel carregar o modulo t de Student agora.</strong><br />
+            Recarregue a pagina e, se o problema continuar, use o console para depuracao.
+          </div>
+        </section>
+      </div>
+    `;
+  }
 }
