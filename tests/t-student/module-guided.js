@@ -889,6 +889,8 @@ function toneClass(kind) {
   return 'status-bar';
 }
 
+const TSTUDENT_BOUND_EVENTS = Symbol('t-student-bound-events');
+
 function procedureLabel(source) {
   return source?.fileName || 'Fonte DATASUS';
 }
@@ -1007,6 +1009,119 @@ export async function renderTestModule(ctx) {
 
   const defaultManualQuestion = config.defaultQuestion || 'As medias dos grupos sao diferentes?';
   const defaultDatasusQuestion = config.defaultDatasusQuestion || 'Ha diferenca media entre as selecoes comparadas no DATASUS?';
+
+  try {
+    const warnedUiKeys = new Set();
+
+    function warnMissingUi(label, selector, detail = 'O modulo seguira carregando com os elementos disponiveis.') {
+      const key = `${label}:${selector}`;
+      if (warnedUiKeys.has(key)) return;
+      warnedUiKeys.add(key);
+      console.warn(`[t-student] Elemento nao encontrado para ${label} (${selector}). ${detail}`);
+    }
+
+    function createMissingElementRef(label, selector) {
+      const noop = () => {};
+      return {
+        __tStudentMissingRef: true,
+        label,
+        selector,
+        value: '',
+        innerHTML: '',
+        textContent: '',
+        className: '',
+        disabled: true,
+        dataset: {},
+        files: [],
+        classList: {
+          add: noop,
+          remove: noop,
+          toggle: noop,
+          contains: () => false
+        },
+        setAttribute: noop,
+        getAttribute: () => null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener: noop,
+        removeEventListener: noop,
+        focus: noop
+      };
+    }
+
+    function isMissingElementRef(element) {
+      return Boolean(element?.__tStudentMissingRef);
+    }
+
+    function findInContainer(container, selector, options = {}) {
+      const { label = selector, optional = false } = options;
+      const element = container?.querySelector?.(selector) || null;
+      if (element) return element;
+      warnMissingUi(
+        label,
+        selector,
+        optional
+          ? 'O listener ou controle opcional sera ignorado nesta renderizacao.'
+          : 'Revise se o seletor ainda corresponde ao HTML atual do modulo.'
+      );
+      return createMissingElementRef(label, selector);
+    }
+
+    function findAllInContainer(container, selector, options = {}) {
+      const { label = selector, optional = false } = options;
+      const elements = Array.from(container?.querySelectorAll?.(selector) || []);
+      if (elements.length) return elements;
+      warnMissingUi(
+        label,
+        selector,
+        optional
+          ? 'Nenhum elemento opcional foi encontrado para este grupo de controles.'
+          : 'Revise se o seletor ainda corresponde ao HTML atual do modulo.'
+      );
+      return [];
+    }
+
+    function safeBindElement(element, eventName, handler, options = {}) {
+      const { label = 'elemento', bindingKey = `${eventName}:${label}`, listenerOptions } = options;
+      if (!element || isMissingElementRef(element)) return null;
+      if (!element[TSTUDENT_BOUND_EVENTS]) {
+        element[TSTUDENT_BOUND_EVENTS] = new Set();
+      }
+      if (element[TSTUDENT_BOUND_EVENTS].has(bindingKey)) {
+        return element;
+      }
+      element[TSTUDENT_BOUND_EVENTS].add(bindingKey);
+      element.addEventListener(eventName, handler, listenerOptions);
+      return element;
+    }
+
+    function safeBind(container, selector, eventName, handler, options = {}) {
+      const { label = selector, optional = false, listenerOptions, bindingKey } = options;
+      const element = container?.querySelector?.(selector) || null;
+      if (!element) {
+        warnMissingUi(
+          label,
+          selector,
+          optional
+            ? `O listener opcional de ${eventName} nao sera registrado.`
+            : `O listener de ${eventName} nao foi registrado; revise o HTML atual do modulo.`
+        );
+        return null;
+      }
+      return safeBindElement(element, eventName, handler, { label, bindingKey, listenerOptions });
+    }
+
+    function safeBindAll(container, selector, eventName, handler, options = {}) {
+      const { label = selector, optional = false, listenerOptions, bindingKey = `${eventName}:${selector}` } = options;
+      const elements = findAllInContainer(container, selector, { label, optional });
+      return elements
+        .map((element, index) => safeBindElement(element, eventName, handler, {
+          label: `${label} #${index + 1}`,
+          bindingKey,
+          listenerOptions
+        }))
+        .filter(Boolean);
+    }
 
   root.innerHTML = `
     <div class="module-grid">
@@ -1241,27 +1356,27 @@ export async function renderTestModule(ctx) {
   `;
 
   const manual = {
-    modeButtons: Array.from(root.querySelectorAll('[data-manual-analysis]')),
-    modeSummaryEl: root.querySelector('#t-manual-mode-status'),
-    groupAEl: root.querySelector('#t-group-a'),
-    groupBEl: root.querySelector('#t-group-b'),
-    unitsEl: root.querySelector('#t-units'),
-    unitsWrapEl: root.querySelector('#t-units-wrap'),
-    groupACountEl: root.querySelector('#t-group-a-count'),
-    groupBCountEl: root.querySelector('#t-group-b-count'),
-    unitsCountEl: root.querySelector('#t-units-count'),
-    fileEl: root.querySelector('#t-file'),
-    fileStatusEl: root.querySelector('#t-file-status'),
-    fileRecognitionEl: root.querySelector('#t-file-recognition'),
-    sourceButtons: Array.from(root.querySelectorAll('[data-manual-source]')),
-    previewEl: root.querySelector('#t-preview'),
-    statusEl: root.querySelector('#t-status'),
-    groupSummaryEl: root.querySelector('#t-group-summary'),
-    metricsEl: root.querySelector('#t-metrics'),
-    chartEl: root.querySelector('#t-chart'),
-    resultsEl: root.querySelector('#t-results'),
-    contextEl: root.querySelector('#t-context'),
-    alphaEl: root.querySelector('#t-alpha')
+    modeButtons: findAllInContainer(root, '[data-manual-analysis]', { label: 'botoes de modo manual' }),
+    modeSummaryEl: findInContainer(root, '#t-manual-mode-status', { label: 'resumo do modo manual' }),
+    groupAEl: findInContainer(root, '#t-group-a', { label: 'campo do Grupo A' }),
+    groupBEl: findInContainer(root, '#t-group-b', { label: 'campo do Grupo B' }),
+    unitsEl: findInContainer(root, '#t-units', { label: 'campo de unidades', optional: true }),
+    unitsWrapEl: findInContainer(root, '#t-units-wrap', { label: 'bloco de unidades', optional: true }),
+    groupACountEl: findInContainer(root, '#t-group-a-count', { label: 'contador do Grupo A' }),
+    groupBCountEl: findInContainer(root, '#t-group-b-count', { label: 'contador do Grupo B' }),
+    unitsCountEl: findInContainer(root, '#t-units-count', { label: 'contador de unidades', optional: true }),
+    fileEl: findInContainer(root, '#t-file', { label: 'upload manual', optional: true }),
+    fileStatusEl: findInContainer(root, '#t-file-status', { label: 'status do upload manual', optional: true }),
+    fileRecognitionEl: findInContainer(root, '#t-file-recognition', { label: 'colunas reconhecidas do upload', optional: true }),
+    sourceButtons: findAllInContainer(root, '[data-manual-source]', { label: 'botoes de origem manual' }),
+    previewEl: findInContainer(root, '#t-preview', { label: 'previa manual' }),
+    statusEl: findInContainer(root, '#t-status', { label: 'status do teste manual' }),
+    groupSummaryEl: findInContainer(root, '#t-group-summary', { label: 'resumo dos grupos' }),
+    metricsEl: findInContainer(root, '#t-metrics', { label: 'metricas manuais' }),
+    chartEl: findInContainer(root, '#t-chart', { label: 'grafico manual' }),
+    resultsEl: findInContainer(root, '#t-results', { label: 'interpretacao manual' }),
+    contextEl: findInContainer(root, '#t-context', { label: 'pergunta manual' }),
+    alphaEl: findInContainer(root, '#t-alpha', { label: 'alpha manual' })
   };
 
   const manualState = {
@@ -1272,17 +1387,17 @@ export async function renderTestModule(ctx) {
   };
 
   const datasusRefs = {
-    wizardEl: root.querySelector('#t-datasus-wizard'),
-    analysisEl: root.querySelector('#t-datasus-analysis-step'),
-    selectionEl: root.querySelector('#t-datasus-selection-step'),
-    derivedEl: root.querySelector('#t-datasus-derived'),
-    contextEl: root.querySelector('#t-datasus-context'),
-    alphaEl: root.querySelector('#t-datasus-alpha'),
-    runBtn: root.querySelector('#t-datasus-run'),
-    statusEl: root.querySelector('#t-datasus-status'),
-    metricsEl: root.querySelector('#t-datasus-metrics'),
-    chartEl: root.querySelector('#t-datasus-chart'),
-    resultsEl: root.querySelector('#t-datasus-results')
+    wizardEl: findInContainer(root, '#t-datasus-wizard', { label: 'wizard DATASUS' }),
+    analysisEl: findInContainer(root, '#t-datasus-analysis-step', { label: 'etapa de analise DATASUS' }),
+    selectionEl: findInContainer(root, '#t-datasus-selection-step', { label: 'etapa de selecao DATASUS' }),
+    derivedEl: findInContainer(root, '#t-datasus-derived', { label: 'previa derivada DATASUS' }),
+    contextEl: findInContainer(root, '#t-datasus-context', { label: 'pergunta DATASUS', optional: true }),
+    alphaEl: findInContainer(root, '#t-datasus-alpha', { label: 'alpha DATASUS', optional: true }),
+    runBtn: findInContainer(root, '#t-datasus-run', { label: 'botao rodar DATASUS', optional: true }),
+    statusEl: findInContainer(root, '#t-datasus-status', { label: 'status DATASUS' }),
+    metricsEl: findInContainer(root, '#t-datasus-metrics', { label: 'metricas DATASUS' }),
+    chartEl: findInContainer(root, '#t-datasus-chart', { label: 'grafico DATASUS' }),
+    resultsEl: findInContainer(root, '#t-datasus-results', { label: 'interpretacao DATASUS' })
   };
 
   const datasusState = {
