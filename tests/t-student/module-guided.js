@@ -1027,13 +1027,13 @@ export async function renderTestModule(ctx) {
 
       <section class="surface-card decorated">
         <div class="tstudent-mode-switch" role="tablist" aria-label="Modo de entrada do teste t">
-          <button type="button" class="tstudent-mode-btn active" data-mode-target="datasus" aria-selected="true">Assistente DATASUS</button>
-          <button type="button" class="tstudent-mode-btn" data-mode-target="manual" aria-selected="false">Modo manual</button>
+          <button type="button" class="tstudent-mode-btn active" data-mode-target="manual" aria-selected="true">Entrada rapida</button>
+          <button type="button" class="tstudent-mode-btn" data-mode-target="datasus" aria-selected="false">Assistente DATASUS</button>
         </div>
-        <p class="small-note" style="margin:12px 0 0;">O assistente agora usa a camada universal DATASUS. O modo manual do teste continua preservado.</p>
+        <p class="small-note" style="margin:12px 0 0;">O caminho principal deste modulo agora e a entrada por colagem rapida ou arquivo no formato padrao. O assistente DATASUS continua disponivel.</p>
       </section>
 
-      <div class="tstudent-mode-panel active" data-mode-panel="datasus">
+      <div class="tstudent-mode-panel" data-mode-panel="datasus">
         <section class="surface-card decorated">
           <div id="t-datasus-wizard"></div>
         </section>
@@ -1099,11 +1099,25 @@ export async function renderTestModule(ctx) {
         </section>
       </div>
 
-      <div class="tstudent-mode-panel" data-mode-panel="manual">
+      <div class="tstudent-mode-panel active" data-mode-panel="manual">
         <section class="surface-card decorated">
-          <h4>Entrada manual de dados</h4>
-          <p class="small-note tstudent-section-note">Cole duas colunas numericas ou um formato grupo + valor. O comportamento original do modo manual foi preservado.</p>
-          <div class="form-grid two">
+          <div class="tstudent-step-head">
+            <span class="small-chip info">Entrada pratica</span>
+            <h4>Entrada manual rapida</h4>
+          </div>
+          <p class="small-note tstudent-section-note">Cole os valores do Grupo A e do Grupo B em campos separados. Se o teste for pareado, mantenha a mesma ordem das unidades nas duas colunas.</p>
+          <div class="tstudent-manual-mode-grid" style="margin-top:14px;">
+            <button type="button" class="tstudent-choice-card is-active" data-manual-analysis="independent">
+              <strong>t independente</strong>
+              <span>Use apenas Grupo A e Grupo B. Os grupos podem ter tamanhos diferentes.</span>
+            </button>
+            <button type="button" class="tstudent-choice-card" data-manual-analysis="paired">
+              <strong>t pareado</strong>
+              <span>Use Grupo A + Grupo B na mesma ordem das unidades. Linhas sem par serao ignoradas.</span>
+            </button>
+          </div>
+          <div id="t-manual-mode-status" class="small-note tstudent-section-note" style="margin-top:14px;">t independente: cole um grupo por campo. O site valida n minimo e mostra exatamente o que entrou no calculo.</div>
+          <div class="form-grid two" style="margin-top:14px;">
             <div>
               <label for="t-context">Pergunta do estudo</label>
               <input id="t-context" type="text" value="${utils.escapeHtml(defaultManualQuestion)}" />
@@ -1117,27 +1131,99 @@ export async function renderTestModule(ctx) {
               </select>
             </div>
           </div>
-          <div style="margin-top:14px;">
-            <label for="t-paste">Cole seus dados</label>
-            <textarea id="t-paste" placeholder="Grupo A\tGrupo B&#10;4,8\t6,1&#10;5,1\t5,8&#10;..."></textarea>
-            <div class="small-note">Formatos aceitos: duas colunas numericas ou coluna de grupo + coluna numerica.</div>
+          <div class="tstudent-quick-entry-grid">
+            <article class="tstudent-input-block">
+              <div class="tstudent-input-block-head">
+                <h5>Grupo A</h5>
+                <span id="t-group-a-count" class="small-chip info">0 validos</span>
+              </div>
+              <textarea id="t-group-a" placeholder="2,7&#10;2,6&#10;2,2&#10;2,8"></textarea>
+              <div class="small-note">Aceita uma coluna do Excel, uma linha por valor ou colagem com tabulacao.</div>
+            </article>
+            <article class="tstudent-input-block">
+              <div class="tstudent-input-block-head">
+                <h5>Grupo B</h5>
+                <span id="t-group-b-count" class="small-chip info">0 validos</span>
+              </div>
+              <textarea id="t-group-b" placeholder="2,9&#10;2,6&#10;2,4&#10;3,0"></textarea>
+              <div class="small-note">Espacos extras, linhas vazias e separadores simples sao limpos automaticamente.</div>
+            </article>
+            <article class="tstudent-input-block tstudent-input-block-aux" id="t-units-wrap">
+              <div class="tstudent-input-block-head">
+                <h5>Unidades / labels</h5>
+                <span id="t-units-count" class="small-chip info">0 labels</span>
+              </div>
+              <textarea id="t-units" placeholder="BA&#10;SP&#10;MG&#10;PR"></textarea>
+              <div class="small-note">Opcional no t pareado. Cada linha representa a mesma unidade nas duas colunas.</div>
+            </article>
           </div>
           <div class="actions-row" style="margin-top:14px;">
-            <button class="btn-secondary" id="t-example">Carregar exemplo</button>
-            <button class="btn" id="t-run">Rodar analise</button>
-            <button class="btn-ghost" id="t-clear">Limpar</button>
+            <button class="btn-secondary" id="t-example" type="button">Usar exemplo</button>
+            <button class="btn" id="t-run" type="button">Rodar teste</button>
+            <button class="btn-ghost" id="t-clear" type="button">Limpar</button>
           </div>
         </section>
 
         <section class="surface-card">
-          <h4>Pre-visualizacao</h4>
-          <div id="t-preview" class="small-note">Nenhum dado carregado ainda.</div>
+          <div class="tstudent-step-head">
+            <span class="small-chip primary">Arquivo</span>
+            <h4>Ler arquivo padrao</h4>
+          </div>
+          <p class="small-note tstudent-section-note">Priorize CSV, XLSX ou TXT no formato wide recomendado. O parser identifica aliases de cabecalho e informa exatamente o que foi reconhecido.</p>
+          <div class="form-grid two" style="margin-top:14px;">
+            <div>
+              <label for="t-file">Arquivo CSV, XLSX ou TXT</label>
+              <input id="t-file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+              <div class="small-note">Formato esperado: ${MANUAL_WIDE_FORMAT_LABEL}.</div>
+            </div>
+            <div class="small-note">
+              <strong>Aliases aceitos</strong><br />
+              unidade: unidade, uf, unidade_analitica, estado<br />
+              grupo_a: grupo_a, grupo a, grupo1, grupo_1<br />
+              grupo_b: grupo_b, grupo b, grupo2, grupo_2<br />
+              observacao_opcional: observacao, observacao, obs, comentario
+            </div>
+          </div>
+          <div id="t-file-status" class="status-bar" style="margin-top:16px;">Nenhum arquivo lido ainda.</div>
+          <div id="t-file-recognition" class="tstudent-config-summary" style="margin-top:12px;"></div>
+        </section>
+
+        <section class="surface-card">
+          <div class="tstudent-step-head">
+            <span class="small-chip info">Modelo</span>
+            <h4>Como organizar no Excel</h4>
+          </div>
+          <p class="small-note tstudent-section-note">Formato wide recomendado para upload e para revisar se a planilha esta metodologicamente correta.</p>
+          ${utils.renderPreviewTable(['unidade', 'grupo_a', 'grupo_b', 'observacao_opcional'], MANUAL_WIDE_EXAMPLE_ROWS, 4)}
+          <ul class="tstudent-inline-list">
+            <li>Cada linha = uma observacao ou unidade analitica.</li>
+            <li><strong>grupo_a</strong> e <strong>grupo_b</strong> sao as colunas comparadas.</li>
+            <li><strong>observacao_opcional</strong> nao entra no calculo.</li>
+            <li>No t pareado, a mesma linha representa a mesma unidade nas duas colunas.</li>
+            <li>No t independente, o site pode aproveitar as duas colunas mesmo sem pareamento, desde que haja dados validos.</li>
+          </ul>
+          <div class="actions-row" style="margin-top:14px;">
+            <a class="btn-secondary" href="${MANUAL_EMPTY_TEMPLATE_URL}" download="modelo_t_student_vazio.csv">Baixar modelo vazio</a>
+            <a class="btn-ghost" href="${MANUAL_FILLED_TEMPLATE_URL}" download="modelo_t_student_exemplo.csv">Baixar exemplo preenchido</a>
+          </div>
+        </section>
+
+        <section class="surface-card">
+          <div class="tstudent-step-head">
+            <span class="small-chip info">Revisao</span>
+            <h4>Previa da base lida</h4>
+          </div>
+          <div class="tstudent-manual-source-switch" role="tablist" aria-label="Fonte ativa da analise" style="margin-top:14px;">
+            <button type="button" class="tstudent-source-btn is-active" data-manual-source="quick">Entrada rapida</button>
+            <button type="button" class="tstudent-source-btn" data-manual-source="file" disabled>Arquivo lido</button>
+          </div>
+          <div id="t-preview" class="small-note" style="margin-top:14px;">Nenhum dado carregado ainda.</div>
           <div id="t-group-summary" class="metrics-grid t-group-summary" style="margin-top:14px;"></div>
         </section>
 
         <section class="surface-card tstudent-statistics-section">
           <h4>Resultados estatisticos</h4>
-          <div id="t-status" class="status-bar">Carregue um exemplo ou cole os dados para iniciar.</div>
+          <div id="t-status" class="status-bar">Cole os dados ou leia um arquivo no formato padrao para iniciar.</div>
           <div id="t-metrics" class="metrics-grid" style="margin-top:14px;"></div>
         </section>
 
@@ -1155,7 +1241,19 @@ export async function renderTestModule(ctx) {
   `;
 
   const manual = {
-    pasteEl: root.querySelector('#t-paste'),
+    modeButtons: Array.from(root.querySelectorAll('[data-manual-analysis]')),
+    modeSummaryEl: root.querySelector('#t-manual-mode-status'),
+    groupAEl: root.querySelector('#t-group-a'),
+    groupBEl: root.querySelector('#t-group-b'),
+    unitsEl: root.querySelector('#t-units'),
+    unitsWrapEl: root.querySelector('#t-units-wrap'),
+    groupACountEl: root.querySelector('#t-group-a-count'),
+    groupBCountEl: root.querySelector('#t-group-b-count'),
+    unitsCountEl: root.querySelector('#t-units-count'),
+    fileEl: root.querySelector('#t-file'),
+    fileStatusEl: root.querySelector('#t-file-status'),
+    fileRecognitionEl: root.querySelector('#t-file-recognition'),
+    sourceButtons: Array.from(root.querySelectorAll('[data-manual-source]')),
     previewEl: root.querySelector('#t-preview'),
     statusEl: root.querySelector('#t-status'),
     groupSummaryEl: root.querySelector('#t-group-summary'),
@@ -1164,6 +1262,13 @@ export async function renderTestModule(ctx) {
     resultsEl: root.querySelector('#t-results'),
     contextEl: root.querySelector('#t-context'),
     alphaEl: root.querySelector('#t-alpha')
+  };
+
+  const manualState = {
+    analysisMode: 'independent',
+    activeSource: 'quick',
+    fileState: null,
+    currentDataset: buildEmptyManualDataset('independent')
   };
 
   const datasusRefs = {
