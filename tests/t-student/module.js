@@ -64,6 +64,11 @@ export async function renderTestModule(ctx) {
   root.addEventListener("change", async (event) => {
     const target = event.target;
 
+    if (target.dataset.manualField) {
+      state.manual[target.dataset.manualField] = target.value;
+      return;
+    }
+
     if (target === refs.fileInput) {
       const [file] = Array.from(target.files || []);
 
@@ -278,6 +283,7 @@ function renderManualPreview(preview, manual) {
   const rows = preview.entries.map((entry, index) => [String(index + 1), entry.groupLabel, formatNumber(entry.value)]);
 
   return `
+    ${preview.error ? renderNotice({ kind: "danger", title: "Formato nao reconhecido", text: preview.error }) : ""}
     <div class="summary-grid">
       <div class="summary-card">
         <span class="summary-label">${escapeMarkup(preview.groupA.label)}</span>
@@ -761,12 +767,21 @@ function runManualMode(manual) {
       }
     : null;
 
-  manual.result = runWelchTTest(preview.groupA.values, preview.groupB.values, {
-    labelA,
-    labelB,
-    alpha,
-    interpretation: (stats) => buildManualInterpretation(stats, labelA, labelB, manual.studyQuestion, alpha)
-  });
+  try {
+    manual.result = runWelchTTest(preview.groupA.values, preview.groupB.values, {
+      labelA,
+      labelB,
+      alpha,
+      interpretation: (stats) => buildManualInterpretation(stats, labelA, labelB, manual.studyQuestion, alpha)
+    });
+  } catch (error) {
+    manual.notice = {
+      kind: "danger",
+      title: "Falha no t test",
+      text: error.message || "Nao foi possivel concluir o t test com os dados manuais."
+    };
+    manual.result = null;
+  }
 }
 
 function parseManualDataset(text) {
@@ -810,11 +825,6 @@ function parseManualDataset(text) {
     error: "Nao foi possivel interpretar a colagem manual. Use duas colunas numericas ou pares no formato Grupo;Valor.",
     detailText: "Formato manual nao reconhecido."
   };
-}
-
-function looksLikeSingleLocaleNumber(value) {
-  const trimmed = String(value || "").trim();
-  return /^[-+]?\d{1,3}(\.\d{3})*(,\d+)?$/.test(trimmed) || /^[-+]?\d+(,\d+)?$/.test(trimmed);
 }
 
 function splitManualLine(line) {
@@ -1227,15 +1237,25 @@ function runDatasusMode(datasus) {
   }
 
   datasus.notice = null;
-  datasus.result = runWelchTTest(
-    derived.groupAEntries.map((entry) => entry.value),
-    derived.groupBEntries.map((entry) => entry.value),
-    {
-      labelA: "Grupo A",
-      labelB: "Grupo B",
-      interpretation: (stats) => buildDatasusInterpretation(stats, derived)
-    }
-  );
+
+  try {
+    datasus.result = runWelchTTest(
+      derived.groupAEntries.map((entry) => entry.value),
+      derived.groupBEntries.map((entry) => entry.value),
+      {
+        labelA: "Grupo A",
+        labelB: "Grupo B",
+        interpretation: (stats) => buildDatasusInterpretation(stats, derived)
+      }
+    );
+  } catch (error) {
+    datasus.notice = {
+      kind: "danger",
+      title: "Falha no t test",
+      text: error.message || "Nao foi possivel concluir o t test com a base derivada."
+    };
+    datasus.result = null;
+  }
 }
 
 function buildManualInterpretation(stats, labelA, labelB, studyQuestion, alpha) {
