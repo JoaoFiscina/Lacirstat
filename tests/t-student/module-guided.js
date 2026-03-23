@@ -243,7 +243,7 @@ function summarizeQuickInput(text, stats, { numeric = false } = {}) {
   };
 }
 
-function buildEmptyManualDataset(mode, sourceKind = 'quick', sourceLabel = 'Entrada manual rapida') {
+function buildEmptyManualDataset(mode, sourceKind = 'quick', sourceLabel = 'Edicao por grupos') {
   return {
     mode,
     sourceKind,
@@ -267,7 +267,7 @@ function buildManualDatasetFromStructuredRows(options, stats) {
   const {
     mode,
     sourceKind = 'quick',
-    sourceLabel = 'Entrada manual rapida',
+    sourceLabel = 'Edicao por grupos',
     rows = [],
     recognizedColumns = {},
     fileMeta = null
@@ -1520,7 +1520,7 @@ export async function renderTestModule(ctx) {
 
         <section class="surface-card tstudent-statistics-section">
           <h4>Resultados estatisticos</h4>
-          <div id="t-status" class="status-bar">Cole os dados ou leia um arquivo no formato padrao para iniciar.</div>
+          <div id="t-status" class="status-bar">Importe um arquivo, cole uma tabela ou edite os grupos para iniciar.</div>
           <div id="t-metrics" class="metrics-grid" style="margin-top:14px;"></div>
         </section>
 
