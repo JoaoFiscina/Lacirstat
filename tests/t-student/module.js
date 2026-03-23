@@ -757,21 +757,21 @@ function buildManualInterpretation(result, alpha, labels, question, utils) {
   const diffAbs = Math.abs(result.diff);
   const significant = result.p < alpha;
   const paragraph = significant
-    ? `Observou-se diferenca estatisticamente significativa entre a media de ${labels[0]} e ${labels[1]}. A media foi maior em ${higherGroup}, com diferenca media de ${utils.fmtNumber(diffAbs, 2)} unidades.`
-    : `Nao se observou diferenca estatisticamente significativa entre as medias de ${labels[0]} e ${labels[1]}. Ainda assim, ${higherGroup} apresentou media numericamente maior, com diferenca media de ${utils.fmtNumber(diffAbs, 2)} unidades.`;
+    ? `Observou-se diferen\u00e7a estatisticamente significativa entre a m\u00e9dia de ${labels[0]} e ${labels[1]}. A m\u00e9dia foi maior em ${higherGroup}, com diferen\u00e7a m\u00e9dia de ${utils.fmtNumber(diffAbs, 2)} unidades.`
+    : `N\u00e3o se observou diferen\u00e7a estatisticamente significativa entre as m\u00e9dias de ${labels[0]} e ${labels[1]}. Ainda assim, ${higherGroup} apresentou m\u00e9dia numericamente maior, com diferen\u00e7a m\u00e9dia de ${utils.fmtNumber(diffAbs, 2)} unidades.`;
 
   return `
-    ${utils.buildInterpretationCard('Interpretacao automatica', paragraph, [
-      `Pergunta analisada: ${question || 'Comparacao entre duas medias independentes'}.`,
+    ${utils.buildInterpretationCard('Interpreta\u00e7\u00e3o autom\u00e1tica', paragraph, [
+      `Pergunta analisada: ${question || 'Compara\u00e7\u00e3o entre duas m\u00e9dias independentes'}.`,
       `Resultado principal: t = ${utils.fmtNumber(result.t, 3)}, gl = ${utils.fmtNumber(result.df, 2)}, p = ${utils.fmtP(result.p)}.`,
-      `Tamanho de efeito: ${effectClass}.`
+      `Tamanho de efeito: ${effectClass}. Em termos pr\u00e1ticos, isso indica uma magnitude ${effectClass} da diferen\u00e7a.`
     ])}
     <div class="result-card">
-      <h4>Leitura didatica final</h4>
+      <h4>Leitura did\u00e1tica final</h4>
       <ul>
-        <li>Grupo com maior media: <strong>${utils.escapeHtml(higherGroup)}</strong>.</li>
-        <li>Diferenca observada: <strong>${utils.fmtSigned(result.diff, 2)}</strong> unidades.</li>
-        <li>Classificacao do efeito: <strong>${utils.escapeHtml(effectClass)}</strong>.</li>
+        <li>Grupo com maior m\u00e9dia: <strong>${utils.escapeHtml(higherGroup)}</strong>.</li>
+        <li>Diferen\u00e7a observada: <strong>${utils.fmtSigned(result.diff, 2)}</strong> unidades.</li>
+        <li>Classifica\u00e7\u00e3o do efeito: <strong>${utils.escapeHtml(effectClass)}</strong>.</li>
       </ul>
     </div>
   `;
@@ -781,16 +781,16 @@ function buildDatasusInterpretation(result, derived, alpha, question, utils) {
   const significant = result.p < alpha;
   const higherGroup = result.diff >= 0 ? 'Grupo A' : 'Grupo B';
   const paragraph = significant
-    ? `Apos resumir os valores anuais dentro do periodo selecionado para cada categoria e comparar os grupos definidos pelo usuario, observou-se diferenca estatisticamente significativa entre Grupo A e Grupo B. A media foi maior em ${higherGroup}.`
-    : `Apos resumir os valores anuais dentro do periodo selecionado para cada categoria e comparar os grupos definidos pelo usuario, nao se observou diferenca estatisticamente significativa entre Grupo A e Grupo B. Ainda assim, a media foi numericamente maior em ${higherGroup}.`;
+    ? `Ap\u00f3s resumir os valores anuais dentro do per\u00edodo selecionado para cada categoria e comparar os grupos definidos pelo usu\u00e1rio, observou-se diferen\u00e7a estatisticamente significativa entre Grupo A e Grupo B. A m\u00e9dia foi maior em ${higherGroup}.`
+    : `Ap\u00f3s resumir os valores anuais dentro do per\u00edodo selecionado para cada categoria e comparar os grupos definidos pelo usu\u00e1rio, n\u00e3o se observou diferen\u00e7a estatisticamente significativa entre Grupo A e Grupo B. Ainda assim, a m\u00e9dia foi numericamente maior em ${higherGroup}.`;
 
   return `
-    ${utils.buildInterpretationCard('Interpretacao automatica', paragraph, [
-      `Pergunta analisada: ${question || 'Comparacao entre dois grupos de categorias'}.`,
-      `Periodo analisado: ${derived.periodLabel}.`,
+    ${utils.buildInterpretationCard('Interpreta\u00e7\u00e3o autom\u00e1tica', paragraph, [
+      `Pergunta analisada: ${question || 'Compara\u00e7\u00e3o entre dois grupos de categorias'}.`,
+      `Per\u00edodo analisado: ${derived.periodLabel}.`,
       `Grupo A: ${joinRegionList(derived.groupRegions.A)}.`,
       `Grupo B: ${joinRegionList(derived.groupRegions.B)}.`,
-      'Resumo utilizado: media por categoria dentro do periodo selecionado, mantendo cada categoria como uma observacao separada.',
+      'Resumo utilizado: m\u00e9dia por categoria dentro do per\u00edodo selecionado, mantendo cada categoria como uma observa\u00e7\u00e3o separada.',
       `Resultado principal: t = ${utils.fmtNumber(result.t, 3)}, gl = ${utils.fmtNumber(result.df, 2)}, p = ${utils.fmtP(result.p)}.`
     ])}
   `;
@@ -803,7 +803,7 @@ export async function renderTestModule(ctx) {
   root.innerHTML = `
     <div class="module-grid">
       <section class="module-header tstudent-header">
-        <div class="chip chip-primary">Modulo didatico · comparacao de medias</div>
+        <div class="chip chip-primary">M\u00f3dulo did\u00e1tico \u00b7 compara\u00e7\u00e3o de m\u00e9dias</div>
         <h3>${utils.escapeHtml(config.title)}</h3>
         <p>${utils.escapeHtml(config.description)}</p>
       </section>
@@ -822,19 +822,20 @@ export async function renderTestModule(ctx) {
           <button type="button" class="tstudent-mode-btn active" data-mode-target="manual" aria-selected="true">Modo manual</button>
           <button type="button" class="tstudent-mode-btn" data-mode-target="datasus" aria-selected="false">Importar CSV DATASUS</button>
         </div>
-        <p class="small-note" style="margin:12px 0 0;">Os dois fluxos coexistem no mesmo modulo. O modo manual segue disponivel sem alterar o comportamento estatistico.</p>
+        <p class="small-note" style="margin:12px 0 0;">Os dois fluxos coexistem no mesmo m\u00f3dulo. O modo manual segue dispon\u00edvel sem alterar o comportamento estat\u00edstico.</p>
       </section>
 
       <div class="tstudent-mode-panel active" data-mode-panel="manual">
         <section class="surface-card decorated">
           <h4>Entrada manual de dados</h4>
+          <p class="small-note tstudent-section-note">Cole duas colunas num\u00e9ricas ou um formato grupo + valor. O teste continua igual ao fluxo original.</p>
           <div class="form-grid two">
             <div>
               <label for="t-context">Pergunta do estudo</label>
-              <input id="t-context" type="text" value="${utils.escapeHtml(config.defaultQuestion || 'As medias dos grupos sao diferentes?')}" />
+              <input id="t-context" type="text" value="${utils.escapeHtml(config.defaultQuestion || 'As m\u00e9dias dos grupos s\u00e3o diferentes?')}" />
             </div>
             <div>
-              <label for="t-alpha">Nivel de significancia</label>
+              <label for="t-alpha">N\u00edvel de signific\u00e2ncia</label>
               <select id="t-alpha">
                 <option value="0.01">1%</option>
                 <option value="0.05" selected>5%</option>
@@ -845,26 +846,37 @@ export async function renderTestModule(ctx) {
           <div style="margin-top:14px;">
             <label for="t-paste">Cole seus dados</label>
             <textarea id="t-paste" placeholder="Grupo A\tGrupo B&#10;4,8\t6,1&#10;5,1\t5,8&#10;..."></textarea>
-            <div class="small-note">Formatos aceitos: duas colunas numericas ou coluna de grupo + coluna numerica.</div>
+            <div class="small-note">Formatos aceitos: duas colunas num\u00e9ricas ou coluna de grupo + coluna num\u00e9rica.</div>
           </div>
           <div class="actions-row" style="margin-top:14px;">
             <button class="btn-secondary" id="t-example">Carregar exemplo</button>
-            <button class="btn" id="t-run">Rodar analise</button>
+            <button class="btn" id="t-run">Rodar an\u00e1lise</button>
             <button class="btn-ghost" id="t-clear">Limpar</button>
           </div>
         </section>
 
         <section class="surface-card">
-          <h4>Pre-visualizacao</h4>
+          <h4>Pr\u00e9-visualiza\u00e7\u00e3o</h4>
           <div id="t-preview" class="small-note">Nenhum dado carregado ainda.</div>
           <div id="t-group-summary" class="metrics-grid t-group-summary" style="margin-top:14px;"></div>
         </section>
 
-        <section class="surface-card">
-          <h4>Resultados e interpretacao</h4>
+        <section class="surface-card tstudent-statistics-section">
+          <h4>Resultados estat\u00edsticos</h4>
+          <p class="small-note tstudent-section-note">Leitura r\u00e1pida do teste t: m\u00e9dias, dispers\u00e3o, evid\u00eancia estat\u00edstica e tamanho de efeito.</p>
           <div id="t-status" class="status-bar">Carregue um exemplo ou cole os dados para iniciar.</div>
           <div id="t-metrics" class="metrics-grid" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card tstudent-chart-section">
+          <h4>Visualiza\u00e7\u00e3o gr\u00e1fica</h4>
+          <p class="small-note tstudent-section-note">Os gr\u00e1ficos ajudam a inspecionar distribui\u00e7\u00e3o, diferen\u00e7a entre m\u00e9dias e incerteza.</p>
           <div id="t-chart" class="chart-grid" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card tstudent-interpretation-section">
+          <h4>Interpreta\u00e7\u00e3o autom\u00e1tica</h4>
+          <p class="small-note tstudent-section-note">Resumo em linguagem natural para apoiar a leitura did\u00e1tica do resultado.</p>
           <div id="t-results" class="result-grid" style="margin-top:14px;"></div>
         </section>
       </div>
@@ -872,13 +884,14 @@ export async function renderTestModule(ctx) {
       <div class="tstudent-mode-panel" data-mode-panel="datasus">
         <section class="surface-card decorated">
           <h4>Importar CSV DATASUS</h4>
+          <p class="small-note tstudent-section-note">Importe um arquivo tabulado do DATASUS, escolha as categorias de cada grupo e deixe o m\u00f3dulo montar automaticamente os vetores do teste.</p>
           <div class="form-grid two">
             <div>
               <label for="t-datasus-context">Pergunta do estudo</label>
-              <input id="t-datasus-context" type="text" value="${utils.escapeHtml(config.defaultDatasusQuestion || 'As medias resumidas diferem entre Grupo A e Grupo B?')}" />
+              <input id="t-datasus-context" type="text" value="${utils.escapeHtml(config.defaultDatasusQuestion || 'As m\u00e9dias resumidas diferem entre Grupo A e Grupo B?')}" />
             </div>
             <div>
-              <label for="t-datasus-alpha">Nivel de significancia</label>
+              <label for="t-datasus-alpha">N\u00edvel de signific\u00e2ncia</label>
               <select id="t-datasus-alpha">
                 <option value="0.01">1%</option>
                 <option value="0.05" selected>5%</option>
@@ -890,7 +903,7 @@ export async function renderTestModule(ctx) {
             <div>
               <label for="t-datasus-file">Arquivo DATASUS</label>
               <input id="t-datasus-file" type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" />
-              <div class="small-note">Aceita .csv, .tsv e .txt. O parser tenta ;, depois tab e depois virgula.</div>
+              <div class="small-note">Aceita .csv, .tsv e .txt. O parser tenta ;, depois tab e depois v\u00edrgula.</div>
             </div>
             <div class="tstudent-inline-actions">
               <button class="btn-secondary" id="t-datasus-example" type="button">Carregar exemplo DATASUS</button>
@@ -898,29 +911,42 @@ export async function renderTestModule(ctx) {
               <button class="btn-ghost" id="t-datasus-clear" type="button">Limpar tudo</button>
             </div>
           </div>
-          <div id="t-datasus-status-card" class="status-bar" style="margin-top:16px;">Importe um arquivo DATASUS para habilitar a configuracao da comparacao.</div>
+          <div id="t-datasus-status-card" class="status-bar" style="margin-top:16px;">Importe um arquivo DATASUS para habilitar a configura\u00e7\u00e3o da compara\u00e7\u00e3o.</div>
         </section>
 
         <section class="surface-card">
-          <h4>Pre-visualizacao da base bruta importada</h4>
+          <h4>Pr\u00e9-visualiza\u00e7\u00e3o da base bruta importada</h4>
           <div id="t-datasus-preview" class="small-note">Nenhuma base importada ainda.</div>
         </section>
 
         <section class="surface-card">
-          <h4>Painel de configuracao da comparacao</h4>
-          <div id="t-datasus-controls" class="small-note">A configuracao ficara disponivel apos a leitura bem-sucedida do arquivo.</div>
+          <h4>Painel de configura\u00e7\u00e3o da compara\u00e7\u00e3o</h4>
+          <p class="small-note tstudent-section-note">Atribua cada categoria a Nenhum, Grupo A ou Grupo B. O per\u00edodo escolhido resume os anos dentro de cada categoria.</p>
+          <div id="t-datasus-controls" class="small-note">A configura\u00e7\u00e3o ficar\u00e1 dispon\u00edvel ap\u00f3s a leitura bem-sucedida do arquivo.</div>
         </section>
 
         <section class="surface-card">
           <h4>Base derivada usada no t test</h4>
-          <div id="t-datasus-derived" class="small-note">Selecione grupos e periodo para montar a base derivada.</div>
+          <p class="small-note tstudent-section-note">Cada categoria selecionada permanece como uma observa\u00e7\u00e3o separada. O per\u00edodo apenas resume os anos dentro de cada categoria.</p>
+          <div id="t-datasus-derived" class="small-note">Selecione grupos e per\u00edodo para montar a base derivada.</div>
         </section>
 
-        <section class="surface-card">
-          <h4>Resultados do t test</h4>
+        <section class="surface-card tstudent-statistics-section">
+          <h4>Resultados estat\u00edsticos</h4>
+          <p class="small-note tstudent-section-note">Resumo num\u00e9rico do contraste entre os grupos derivados do arquivo importado.</p>
           <div id="t-datasus-result-status" class="status-bar">Aguardando importacao de arquivo.</div>
           <div id="t-datasus-metrics" class="metrics-grid" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card tstudent-chart-section">
+          <h4>Gr\u00e1ficos do t test</h4>
+          <p class="small-note tstudent-section-note">Use os gr\u00e1ficos para comparar distribui\u00e7\u00f5es, diferen\u00e7a entre m\u00e9dias e intervalo de confian\u00e7a.</p>
           <div id="t-datasus-chart" class="chart-grid" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card tstudent-interpretation-section">
+          <h4>Interpreta\u00e7\u00e3o autom\u00e1tica</h4>
+          <p class="small-note tstudent-section-note">Leitura textual do resultado com per\u00edodo e categorias inclu\u00eddas em cada grupo.</p>
           <div id="t-datasus-results" class="result-grid" style="margin-top:14px;"></div>
         </section>
       </div>
@@ -984,13 +1010,13 @@ export async function renderTestModule(ctx) {
 
     const previewHeaders = parsed.mode === 'categorical_numeric' ? ['Grupo', 'Valor'] : parsed.headers;
     manual.previewEl.innerHTML = `
-      <div class="small-note">Formato detectado: <strong>${parsed.mode === 'categorical_numeric' ? 'Grupo + valor' : 'Duas colunas numericas'}</strong> · Linhas validas: ${parsed.validRows} · Linhas ignoradas: ${parsed.ignoredRows}</div>
+      <div class="small-note">Formato detectado: <strong>${parsed.mode === 'categorical_numeric' ? 'Grupo + valor' : 'Duas colunas num\u00e9ricas'}</strong> · Linhas v\u00e1lidas: ${parsed.validRows} · Linhas ignoradas: ${parsed.ignoredRows}</div>
       ${utils.renderPreviewTable(previewHeaders, parsed.previewRows, 8)}
     `;
     manual.groupSummaryEl.innerHTML = `
       <div class="metric-card"><div class="metric-label">Grupo detectado 1</div><div class="metric-value">${utils.escapeHtml(parsed.groupNames[0] || 'Grupo 1')}</div><div class="metric-mini">n = ${parsed.g1.length}</div></div>
       <div class="metric-card"><div class="metric-label">Grupo detectado 2</div><div class="metric-value">${utils.escapeHtml(parsed.groupNames[1] || 'Grupo 2')}</div><div class="metric-mini">n = ${parsed.g2.length}</div></div>
-      <div class="metric-card"><div class="metric-label">Dados validos</div><div class="metric-value">${parsed.validRows}</div><div class="metric-mini">Total importado = ${parsed.rawRows}</div></div>
+      <div class="metric-card"><div class="metric-label">Dados v\u00e1lidos</div><div class="metric-value">${parsed.validRows}</div><div class="metric-mini">Total importado = ${parsed.rawRows}</div></div>
     `;
 
     return parsed;
@@ -1001,13 +1027,13 @@ export async function renderTestModule(ctx) {
     const alpha = Number(manual.alphaEl.value || 0.05);
 
     if (parsed.g1.length < 2 || parsed.g2.length < 2) {
-      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Precisamos de pelo menos 2 valores validos em cada grupo para rodar o teste t.');
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Precisamos de pelo menos 2 valores válidos em cada grupo para rodar o teste t.');
       return;
     }
 
     const result = safeWelch(parsed.g1, parsed.g2, stats);
     if (!Number.isFinite(result.t) || !Number.isFinite(result.p)) {
-      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Nao foi possivel calcular o teste com esses dados.');
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Não foi possível calcular o teste com esses dados.');
       return;
     }
 
@@ -1016,8 +1042,8 @@ export async function renderTestModule(ctx) {
 
     manual.statusEl.className = significant ? 'success-box' : 'status-bar';
     manual.statusEl.textContent = significant
-      ? `Diferenca estatisticamente significativa detectada (p ${utils.fmtP(result.p)} < ${alpha.toLocaleString('pt-BR')}).`
-      : `Nao houve evidencia estatistica suficiente de diferenca entre as medias (p ${utils.fmtP(result.p)}).`;
+      ? `Diferença estatisticamente significativa detectada (p ${utils.fmtP(result.p)} < ${alpha.toLocaleString('pt-BR')}).`
+      : `Não houve evidência estatística suficiente de diferença entre as médias (p ${utils.fmtP(result.p)}).`;
     manual.metricsEl.innerHTML = buildResultMetricsHtml(result, labels, utils);
     manual.chartEl.innerHTML = buildResultChartsHtml(result, labels, parsed.g1, parsed.g2, stats, utils);
     manual.resultsEl.innerHTML = buildManualInterpretation(result, alpha, labels, manual.contextEl.value || config.defaultQuestion || '', utils);
@@ -1025,7 +1051,7 @@ export async function renderTestModule(ctx) {
 
   function clearManual() {
     manual.pasteEl.value = '';
-    manual.contextEl.value = config.defaultQuestion || 'As medias dos grupos sao diferentes?';
+    manual.contextEl.value = config.defaultQuestion || 'As médias dos grupos são diferentes?';
     manual.alphaEl.value = '0.05';
     manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
     manual.groupSummaryEl.innerHTML = '';
@@ -1077,8 +1103,8 @@ export async function renderTestModule(ctx) {
     clearDatasusResultPanels();
     datasusRefs.resultStatusEl.className = 'status-bar';
     datasusRefs.resultStatusEl.textContent = datasusState.parsed
-      ? 'A base derivada foi atualizada. Revise os grupos e clique em "Rodar t test" quando estiver valido.'
-      : 'Aguardando importacao de arquivo.';
+      ? 'A base derivada foi atualizada. Revise os grupos e clique em "Rodar t test" quando estiver válida.'
+      : 'Aguardando importação de arquivo.';
     updateDatasusRunAvailability();
   }
 
