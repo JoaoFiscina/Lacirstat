@@ -1379,9 +1379,9 @@ export async function renderTestModule(ctx) {
         <section class="surface-card decorated">
           <div class="tstudent-step-head">
             <span class="small-chip info">Entrada pratica</span>
-            <h4>Entrada manual rapida</h4>
+            <h4>Importar, colar e editar</h4>
           </div>
-          <p class="small-note tstudent-section-note">Cole os valores do Grupo A e do Grupo B em campos separados. Se o teste for pareado, mantenha a mesma ordem das unidades nas duas colunas.</p>
+          <p class="small-note tstudent-section-note">O fluxo principal deste modulo agora prioriza planilhas brasileiras: CSV com <strong>;</strong>, decimal com <strong>,</strong> e colagem direta do Excel.</p>
           <div class="tstudent-manual-mode-grid" style="margin-top:14px;">
             <button type="button" class="tstudent-choice-card is-active" data-manual-analysis="independent">
               <strong>t independente</strong>
@@ -1407,61 +1407,77 @@ export async function renderTestModule(ctx) {
               </select>
             </div>
           </div>
-          <div class="tstudent-quick-entry-grid">
-            <article class="tstudent-input-block">
-              <div class="tstudent-input-block-head">
-                <h5>Grupo A</h5>
-                <span id="t-group-a-count" class="small-chip info">0 validos</span>
-              </div>
-              <textarea id="t-group-a" placeholder="2,7&#10;2,6&#10;2,2&#10;2,8"></textarea>
-              <div class="small-note">Aceita uma coluna do Excel, uma linha por valor ou colagem com tabulacao.</div>
-            </article>
-            <article class="tstudent-input-block">
-              <div class="tstudent-input-block-head">
-                <h5>Grupo B</h5>
-                <span id="t-group-b-count" class="small-chip info">0 validos</span>
-              </div>
-              <textarea id="t-group-b" placeholder="2,9&#10;2,6&#10;2,4&#10;3,0"></textarea>
-              <div class="small-note">Espacos extras, linhas vazias e separadores simples sao limpos automaticamente.</div>
-            </article>
-            <article class="tstudent-input-block tstudent-input-block-aux" id="t-units-wrap">
-              <div class="tstudent-input-block-head">
-                <h5>Unidades / labels</h5>
-                <span id="t-units-count" class="small-chip info">0 labels</span>
-              </div>
-              <textarea id="t-units" placeholder="BA&#10;SP&#10;MG&#10;PR"></textarea>
-              <div class="small-note">Opcional no t pareado. Cada linha representa a mesma unidade nas duas colunas.</div>
-            </article>
-          </div>
-          <div class="actions-row" style="margin-top:14px;">
-            <button class="btn-secondary" id="t-example" type="button">Usar exemplo</button>
-            <button class="btn" id="t-run" type="button">Rodar teste</button>
-            <button class="btn-ghost" id="t-clear" type="button">Limpar</button>
-          </div>
-        </section>
 
-        <section class="surface-card">
-          <div class="tstudent-step-head">
-            <span class="small-chip primary">Arquivo</span>
-            <h4>Ler arquivo padrao</h4>
+          <div class="tstudent-intake-grid">
+            <article class="tstudent-workflow-block">
+              <div class="tstudent-workflow-head">
+                <h5>Importar arquivo</h5>
+                <span class="small-chip primary">CSV/XLSX/TXT</span>
+              </div>
+              <p class="small-note">Aceita planilhas exportadas do Excel e formatos compativeis com DATASUS.</p>
+              <div class="tstudent-file-picker">
+                <label for="t-file" class="btn-secondary">Importar arquivo</label>
+                <input id="t-file" class="tstudent-hidden-file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <span class="small-note">Preferencia: CSV com ; e decimal com virgula.</span>
+              </div>
+              <div class="small-note">
+                Modelo oficial: <code>${utils.escapeHtml(MANUAL_WIDE_FORMAT_LABEL)}</code><br />
+                Aliases: unidade, uf, unidade_analitica, grupo_a, grupo_b, observacao/opcional.
+              </div>
+              <div id="t-file-status" class="status-bar" style="margin-top:14px;">Nenhum arquivo lido ainda.</div>
+              <div id="t-file-recognition" class="tstudent-config-summary" style="margin-top:12px;"></div>
+            </article>
+
+            <article class="tstudent-workflow-block tstudent-workflow-block-wide">
+              <div class="tstudent-workflow-head">
+                <h5>Colar dados</h5>
+                <span class="small-chip info">Planilha BR</span>
+              </div>
+              <textarea id="t-paste-data" class="tstudent-paste-textarea" placeholder="${utils.escapeHtml(MANUAL_WIDE_EXAMPLE_TEXT).replace(/\n/g, '&#10;')}"></textarea>
+              <div class="small-note">Aceita conteudo com <strong>;</strong>, tabulacao do Excel e numeros com virgula decimal.</div>
+              <div class="actions-row tstudent-actions-compact">
+                <button class="btn-secondary" id="t-paste-read" type="button">Ler dados colados</button>
+                <button class="btn-ghost" id="t-example" type="button">Usar exemplo</button>
+                <button class="btn-ghost" id="t-clear" type="button">Limpar</button>
+              </div>
+              <div id="t-paste-status" class="status-bar" style="margin-top:14px;">Nenhum dado colado ainda.</div>
+              <div id="t-paste-recognition" class="tstudent-config-summary" style="margin-top:12px;"></div>
+            </article>
+
+            <article class="tstudent-workflow-block tstudent-workflow-block-full">
+              <div class="tstudent-workflow-head">
+                <h5>Editar por grupos</h5>
+                <span class="small-chip info">Entrada rapida</span>
+              </div>
+              <p class="small-note">Se preferir revisar ou montar os grupos manualmente, cole cada coluna abaixo. O sistema limpa espacos extras e aceita decimal com virgula.</p>
+              <div class="tstudent-quick-entry-grid tstudent-quick-entry-grid-compact">
+                <article class="tstudent-input-block">
+                  <div class="tstudent-input-block-head">
+                    <h5>Grupo A</h5>
+                    <span id="t-group-a-count" class="small-chip info">0 validos</span>
+                  </div>
+                  <textarea id="t-group-a" placeholder="2,2&#10;3&#10;3,7&#10;2,9"></textarea>
+                  <div class="small-note">Aceita uma coluna do Excel, uma linha por valor ou colagem com tabulacao.</div>
+                </article>
+                <article class="tstudent-input-block">
+                  <div class="tstudent-input-block-head">
+                    <h5>Grupo B</h5>
+                    <span id="t-group-b-count" class="small-chip info">0 validos</span>
+                  </div>
+                  <textarea id="t-group-b" placeholder="2,2&#10;3,3&#10;2,8&#10;3,3"></textarea>
+                  <div class="small-note">Inteiros, virgula decimal e linhas vazias sao tratados automaticamente.</div>
+                </article>
+                <article class="tstudent-input-block tstudent-input-block-aux" id="t-units-wrap">
+                  <div class="tstudent-input-block-head">
+                    <h5>Unidades / labels</h5>
+                    <span id="t-units-count" class="small-chip info">0 labels</span>
+                  </div>
+                  <textarea id="t-units" placeholder="Rondonia&#10;Acre&#10;Amazonas&#10;Roraima"></textarea>
+                  <div class="small-note">Opcional no t pareado. Cada linha representa a mesma unidade nas duas colunas.</div>
+                </article>
+              </div>
+            </article>
           </div>
-          <p class="small-note tstudent-section-note">Priorize CSV, XLSX ou TXT no formato wide recomendado. O parser identifica aliases de cabecalho e informa exatamente o que foi reconhecido.</p>
-          <div class="form-grid two" style="margin-top:14px;">
-            <div>
-              <label for="t-file">Arquivo CSV, XLSX ou TXT</label>
-              <input id="t-file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-              <div class="small-note">Formato esperado: ${MANUAL_WIDE_FORMAT_LABEL}.</div>
-            </div>
-            <div class="small-note">
-              <strong>Aliases aceitos</strong><br />
-              unidade: unidade, uf, unidade_analitica, estado<br />
-              grupo_a: grupo_a, grupo a, grupo1, grupo_1<br />
-              grupo_b: grupo_b, grupo b, grupo2, grupo_2<br />
-              observacao_opcional: observacao, obs, comentario
-            </div>
-          </div>
-          <div id="t-file-status" class="status-bar" style="margin-top:16px;">Nenhum arquivo lido ainda.</div>
-          <div id="t-file-recognition" class="tstudent-config-summary" style="margin-top:12px;"></div>
         </section>
 
         <section class="surface-card">
@@ -1469,8 +1485,9 @@ export async function renderTestModule(ctx) {
             <span class="small-chip info">Modelo</span>
             <h4>Como organizar no Excel</h4>
           </div>
-          <p class="small-note tstudent-section-note">Formato wide recomendado para upload e para revisar se a planilha esta metodologicamente correta.</p>
-          ${utils.renderPreviewTable(['unidade', 'grupo_a', 'grupo_b', 'observacao_opcional'], MANUAL_WIDE_EXAMPLE_ROWS, 4)}
+          <p class="small-note tstudent-section-note">Formato wide recomendado para upload, colagem e revisao metodologica da planilha.</p>
+          <div class="tstudent-format-example"><code>${utils.escapeHtml(MANUAL_WIDE_EXAMPLE_TEXT).replace(/\n/g, '<br />')}</code></div>
+          ${utils.renderPreviewTable(MANUAL_WIDE_PREVIEW_HEADERS, MANUAL_WIDE_EXAMPLE_ROWS, 4)}
           <ul class="tstudent-inline-list">
             <li>Cada linha = uma observacao ou unidade analitica.</li>
             <li><strong>grupo_a</strong> e <strong>grupo_b</strong> sao as colunas comparadas.</li>
@@ -1487,14 +1504,18 @@ export async function renderTestModule(ctx) {
         <section class="surface-card">
           <div class="tstudent-step-head">
             <span class="small-chip info">Revisao</span>
-            <h4>Previa da base lida</h4>
+            <h4>Previa / revisao dos dados</h4>
           </div>
           <div class="tstudent-manual-source-switch" role="tablist" aria-label="Fonte ativa da analise" style="margin-top:14px;">
-            <button type="button" class="tstudent-source-btn is-active" data-manual-source="quick">Entrada rapida</button>
-            <button type="button" class="tstudent-source-btn" data-manual-source="file" disabled>Arquivo lido</button>
+            <button type="button" class="tstudent-source-btn is-active" data-manual-source="quick">Grupos</button>
+            <button type="button" class="tstudent-source-btn" data-manual-source="paste" disabled>Tabela colada</button>
+            <button type="button" class="tstudent-source-btn" data-manual-source="file" disabled>Arquivo</button>
           </div>
           <div id="t-preview" class="small-note" style="margin-top:14px;">Nenhum dado carregado ainda.</div>
           <div id="t-group-summary" class="metrics-grid t-group-summary" style="margin-top:14px;"></div>
+          <div class="actions-row" style="margin-top:14px;">
+            <button class="btn" id="t-run" type="button">Rodar teste</button>
+          </div>
         </section>
 
         <section class="surface-card tstudent-statistics-section">
@@ -1526,6 +1547,9 @@ export async function renderTestModule(ctx) {
     groupACountEl: findInContainer(root, '#t-group-a-count', { label: 'contador do Grupo A' }),
     groupBCountEl: findInContainer(root, '#t-group-b-count', { label: 'contador do Grupo B' }),
     unitsCountEl: findInContainer(root, '#t-units-count', { label: 'contador de unidades', optional: true }),
+    pasteEl: findInContainer(root, '#t-paste-data', { label: 'area de dados colados', optional: true }),
+    pasteStatusEl: findInContainer(root, '#t-paste-status', { label: 'status dos dados colados', optional: true }),
+    pasteRecognitionEl: findInContainer(root, '#t-paste-recognition', { label: 'colunas reconhecidas dos dados colados', optional: true }),
     fileEl: findInContainer(root, '#t-file', { label: 'upload manual', optional: true }),
     fileStatusEl: findInContainer(root, '#t-file-status', { label: 'status do upload manual', optional: true }),
     fileRecognitionEl: findInContainer(root, '#t-file-recognition', { label: 'colunas reconhecidas do upload', optional: true }),
@@ -1543,6 +1567,7 @@ export async function renderTestModule(ctx) {
   const manualState = {
     analysisMode: 'independent',
     activeSource: 'quick',
+    pasteState: null,
     fileState: null,
     currentDataset: buildEmptyManualDataset('independent')
   };
@@ -1688,13 +1713,48 @@ export async function renderTestModule(ctx) {
   }
 
   function syncManualSourceUi() {
+    const hasPasteSource = Boolean(manualState.pasteState);
     const hasFileSource = Boolean(manualState.fileState);
 
     manual.sourceButtons.forEach(button => {
       const source = button.dataset.manualSource;
       button.classList.toggle('is-active', source === manualState.activeSource);
+      if (source === 'paste') button.disabled = !hasPasteSource;
       if (source === 'file') button.disabled = !hasFileSource;
     });
+  }
+
+  function renderManualPasteStatus() {
+    const rawPaste = normalizeManualText(manual.pasteEl.value).trim();
+
+    if (!manualState.pasteState) {
+      manual.pasteStatusEl.className = 'status-bar';
+      manual.pasteStatusEl.textContent = rawPaste
+        ? 'Clique em "Ler dados colados" para interpretar a tabela.'
+        : 'Nenhum dado colado ainda.';
+      manual.pasteRecognitionEl.innerHTML = '';
+      return;
+    }
+
+    if (manualState.pasteState.status === 'error') {
+      manual.pasteStatusEl.className = 'error-box';
+      manual.pasteStatusEl.innerHTML = utils.escapeHtml(manualState.pasteState.message);
+      manual.pasteRecognitionEl.innerHTML = Array.isArray(manualState.pasteState.details) && manualState.pasteState.details.length
+        ? `<div class="small-note">${manualState.pasteState.details.map(item => utils.escapeHtml(item)).join(' ')}</div>`
+        : '';
+      return;
+    }
+
+    const delimiterText = manualState.pasteState.delimiter
+      ? `Leitura detectada: ${delimiterLabel(manualState.pasteState.delimiter)}.`
+      : '';
+    const decimalText = manualState.pasteState.decimalCommaDetected
+      ? 'Numeros com virgula decimal foram convertidos automaticamente.'
+      : '';
+
+    manual.pasteStatusEl.className = 'success-box';
+    manual.pasteStatusEl.innerHTML = utils.escapeHtml([delimiterText, decimalText].filter(Boolean).join(' '));
+    manual.pasteRecognitionEl.innerHTML = buildRecognizedColumnsChips(manualState.pasteState.recognizedColumns);
   }
 
   function renderManualFileStatus() {
@@ -1721,13 +1781,16 @@ export async function renderTestModule(ctx) {
       ? `Cabecalho reconhecido na linha ${manualState.fileState.headerRowIndex + 1}.`
       : '';
     const delimiterText = manualState.fileState.delimiter
-      ? `Separador detectado: ${delimiterLabel(manualState.fileState.delimiter)}.`
+      ? `Arquivo lido no padrao ${delimiterLabel(manualState.fileState.delimiter)}.`
+      : '';
+    const decimalText = manualState.fileState.decimalCommaDetected
+      ? 'Numeros com virgula decimal foram convertidos automaticamente.'
       : '';
 
     manual.fileStatusEl.className = 'success-box';
     manual.fileStatusEl.innerHTML = `
       <strong>${utils.escapeHtml(manualState.fileState.fileName)}</strong><br />
-      ${utils.escapeHtml(`Arquivo lido em ${manualState.fileState.tableName}. ${headerText} ${delimiterText}`.trim())}
+      ${utils.escapeHtml(`Arquivo lido em ${manualState.fileState.tableName}. ${headerText} ${delimiterText} ${decimalText}`.trim())}
     `;
     manual.fileRecognitionEl.innerHTML = buildRecognizedColumnsChips(manualState.fileState.recognizedColumns);
   }
@@ -1736,7 +1799,7 @@ export async function renderTestModule(ctx) {
     return buildManualDatasetFromStructuredRows({
       mode: manualState.analysisMode,
       sourceKind: 'quick',
-      sourceLabel: 'Entrada manual rapida',
+      sourceLabel: 'Edicao por grupos',
       rows: buildQuickManualRows(manualState.analysisMode, {
         groupA: manual.groupAEl.value,
         groupB: manual.groupBEl.value,
@@ -1746,8 +1809,17 @@ export async function renderTestModule(ctx) {
   }
 
   function currentManualDataset() {
+    if (manualState.activeSource === 'paste' && manualState.pasteState) {
+      return buildManualDatasetFromTabularState(manualState.pasteState, manualState.analysisMode, stats, {
+        sourceKind: 'paste',
+        sourceLabel: 'Tabela colada'
+      });
+    }
     if (manualState.activeSource === 'file' && manualState.fileState) {
-      return buildManualDatasetFromFileState(manualState.fileState, manualState.analysisMode, stats);
+      return buildManualDatasetFromTabularState(manualState.fileState, manualState.analysisMode, stats, {
+        sourceKind: 'file',
+        sourceLabel: 'Arquivo lido'
+      });
     }
     return buildCurrentQuickDataset();
   }
@@ -1756,6 +1828,7 @@ export async function renderTestModule(ctx) {
     refreshQuickCounters();
     syncManualModeUi();
     syncManualSourceUi();
+    renderManualPasteStatus();
     renderManualFileStatus();
 
     const dataset = currentManualDataset();
@@ -1779,14 +1852,16 @@ export async function renderTestModule(ctx) {
     const primaryMessage = dataset.errors[0]
       || (dataset.sourceKind === 'file'
         ? 'Arquivo interpretado com transparencia. Revise as linhas antes de rodar o teste.'
-        : 'Entrada manual interpretada. Revise as linhas antes de rodar o teste.');
+        : dataset.sourceKind === 'paste'
+          ? 'Tabela colada interpretada. Revise bruto x convertido antes de rodar o teste.'
+          : 'Entrada por grupos interpretada. Revise as linhas antes de rodar o teste.');
     const warningsHtml = dataset.warnings.length
       ? `<div class="status-bar" style="margin-top:12px;"><ul class="tstudent-inline-list">${dataset.warnings.map(message => `<li>${utils.escapeHtml(message)}</li>`).join('')}</ul></div>`
       : '';
     const infoHtml = dataset.infos.length
       ? `<div class="small-note" style="margin-top:12px;">${dataset.infos.map(message => utils.escapeHtml(message)).join(' ')}</div>`
       : '';
-    const recognizedHtml = dataset.sourceKind === 'file' && Object.keys(dataset.recognizedColumns).length
+    const recognizedHtml = ['file', 'paste'].includes(dataset.sourceKind) && Object.keys(dataset.recognizedColumns).length
       ? `<div class="tstudent-config-summary" style="margin-top:12px;">${buildRecognizedColumnsChips(dataset.recognizedColumns)}</div>`
       : '';
 
@@ -1816,7 +1891,7 @@ export async function renderTestModule(ctx) {
       </div>
       <div class="metric-card">
         <div class="metric-label">Fonte ativa</div>
-        <div class="metric-value tstudent-compact-value">${utils.escapeHtml(dataset.sourceKind === 'file' ? (dataset.fileMeta?.fileName || 'Arquivo lido') : 'Entrada manual rapida')}</div>
+        <div class="metric-value tstudent-compact-value">${utils.escapeHtml(dataset.sourceKind === 'file' ? (dataset.fileMeta?.fileName || 'Arquivo lido') : dataset.sourceKind === 'paste' ? 'Tabela colada' : 'Edicao por grupos')}</div>
         <div class="metric-mini">${dataset.mode === 'paired' ? `Linhas numericas A/B = ${dataset.numericCounts.A}/${dataset.numericCounts.B}` : `Observacoes validas A/B = ${dataset.validCounts.A}/${dataset.validCounts.B}`}</div>
       </div>
     `;
@@ -1830,7 +1905,7 @@ export async function renderTestModule(ctx) {
     const labels = ['Grupo A', 'Grupo B'];
 
     if (!dataset.hasContent) {
-      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Cole os dados ou leia um arquivo antes de rodar o teste.');
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Importe um arquivo, cole uma tabela ou preencha os grupos antes de rodar o teste.');
       return;
     }
 
@@ -1874,16 +1949,19 @@ export async function renderTestModule(ctx) {
   }
 
   function clearManual() {
+    manual.pasteEl.value = '';
     manual.groupAEl.value = '';
     manual.groupBEl.value = '';
     manual.unitsEl.value = '';
     manual.fileEl.value = '';
+    manualState.pasteState = null;
     manualState.fileState = null;
     manualState.activeSource = 'quick';
     manual.contextEl.value = defaultManualQuestion;
     manual.alphaEl.value = '0.05';
     manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
     manual.groupSummaryEl.innerHTML = '';
+    renderManualPasteStatus();
     renderManualFileStatus();
     refreshQuickCounters();
     syncManualModeUi();
@@ -1899,24 +1977,56 @@ export async function renderTestModule(ctx) {
   }
 
   function setManualSource(source) {
+    if (source === 'paste' && !manualState.pasteState) return;
     if (source === 'file' && !manualState.fileState) return;
     manualState.activeSource = source;
     refreshManualPreview();
     invalidateManualResults(source === 'file'
       ? 'Fonte alterada para o arquivo lido. Revise a base antes de rodar o teste.'
-      : 'Fonte alterada para a entrada manual rapida. Revise a base antes de rodar o teste.');
+      : source === 'paste'
+        ? 'Fonte alterada para a tabela colada. Revise a base antes de rodar o teste.'
+        : 'Fonte alterada para a edicao por grupos. Revise a base antes de rodar o teste.');
   }
 
   function applyManualExample() {
     const example = MANUAL_QUICK_EXAMPLES[manualState.analysisMode] || MANUAL_QUICK_EXAMPLES.independent;
+    manual.pasteEl.value = MANUAL_WIDE_EXAMPLE_TEXT;
     manual.groupAEl.value = example.groupA;
     manual.groupBEl.value = example.groupB;
     manual.unitsEl.value = example.units;
     manual.fileEl.value = '';
+    manualState.pasteState = readManualPasteState(MANUAL_WIDE_EXAMPLE_TEXT, stats);
     manualState.fileState = null;
-    manualState.activeSource = 'quick';
+    manualState.activeSource = 'paste';
     refreshManualPreview();
-    invalidateManualResults('Exemplo aplicado. Revise a base e clique em "Rodar teste".');
+    invalidateManualResults('Exemplo aplicado no formato brasileiro. Revise a base e clique em "Rodar teste".');
+  }
+
+  function handlePastedTextInput() {
+    manualState.pasteState = null;
+    if (manualState.activeSource === 'paste') {
+      manualState.activeSource = 'quick';
+    }
+    refreshManualPreview();
+    invalidateManualResults('Conteudo colado atualizado. Clique em "Ler dados colados" para revisar essa tabela.');
+  }
+
+  function readManualPasteInput() {
+    const rawPaste = normalizeManualText(manual.pasteEl.value).trim();
+    if (!rawPaste) {
+      manualState.pasteState = null;
+      manualState.activeSource = 'quick';
+      refreshManualPreview();
+      invalidateManualResults('Cole uma tabela antes de usar "Ler dados colados".');
+      return;
+    }
+
+    manualState.pasteState = readManualPasteState(rawPaste, stats);
+    manualState.activeSource = 'paste';
+    refreshManualPreview();
+    invalidateManualResults(manualState.pasteState.status === 'loaded'
+      ? 'Dados colados lidos. Revise a previa e clique em "Rodar teste".'
+      : 'Nao foi possivel interpretar os dados colados. Confira a mensagem acima.');
   }
 
   async function handleManualFile(event) {
@@ -2540,6 +2650,7 @@ export async function renderTestModule(ctx) {
     setManualSource(event.currentTarget.dataset.manualSource);
   }, { label: 'alternancia entre fontes do modo manual' });
 
+  safeBind(root, '#t-paste-read', 'click', readManualPasteInput, { label: 'botao ler dados colados', optional: true });
   safeBind(root, '#t-example', 'click', applyManualExample, { label: 'botao usar exemplo', optional: true });
   safeBind(root, '#t-run', 'click', runManualAnalysis, { label: 'botao rodar teste', optional: true });
   safeBind(root, '#t-clear', 'click', clearManual, { label: 'botao limpar', optional: true });
@@ -2552,6 +2663,7 @@ export async function renderTestModule(ctx) {
   safeBind(root, '#t-group-a', 'input', handleManualInput, { label: 'campo do Grupo A' });
   safeBind(root, '#t-group-b', 'input', handleManualInput, { label: 'campo do Grupo B' });
   safeBind(root, '#t-units', 'input', handleManualInput, { label: 'campo de unidades', optional: true });
+  safeBind(root, '#t-paste-data', 'input', handlePastedTextInput, { label: 'area de dados colados', optional: true });
   safeBind(root, '#t-file', 'change', handleManualFile, { label: 'upload manual', optional: true });
 
   safeBind(root, '#t-datasus-context', 'input', () => {
@@ -2563,7 +2675,7 @@ export async function renderTestModule(ctx) {
   safeBind(root, '#t-datasus-run', 'click', runDatasusAnalysis, { label: 'botao rodar DATASUS', optional: true });
 
   refreshManualPreview();
-  invalidateManualResults('Cole os dados ou leia um arquivo no formato padrao para iniciar.');
+  invalidateManualResults('Importe um arquivo, cole uma tabela ou edite os grupos para iniciar.');
   mountWizard();
   renderDatasusAnalysis();
   renderDatasusSelection();
