@@ -276,7 +276,7 @@ function parseDatasusDataset(text, stats) {
   const lines = rawLines.filter(line => line.trim() !== '');
 
   if (!lines.length) {
-    return { ok: false, error: 'Nenhum conteudo foi encontrado no arquivo informado.' };
+    return { ok: false, error: 'Nenhum conte\u00fado foi encontrado no arquivo informado.' };
   }
 
   const delimiters = [';', '\t', ','];
@@ -292,7 +292,7 @@ function parseDatasusDataset(text, stats) {
   }
 
   if (!detected) {
-    return { ok: false, error: 'Nao foi possivel interpretar o arquivo DATASUS enviado.' };
+    return { ok: false, error: 'N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.' };
   }
 
   const { delimiter, rows, header } = detected;
@@ -356,7 +356,7 @@ function parseDatasusDataset(text, stats) {
   const measureLabel = inferMeasureLabel(metadataLines);
 
   if (!years.length || !selectableRows.length) {
-    return { ok: false, error: 'Nao foi possivel interpretar o arquivo DATASUS enviado.' };
+    return { ok: false, error: 'N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.' };
   }
 
   return {
@@ -439,7 +439,7 @@ function getSelectedPeriodYears(state) {
 }
 
 function getPeriodLabel(state, selectedYears) {
-  if (!selectedYears.length) return 'sem periodo valido';
+  if (!selectedYears.length) return 'sem per\u00edodo v\u00e1lido';
 
   if (state.periodMode === 'all') {
     return `${selectedYears[0]}-${selectedYears[selectedYears.length - 1]} (todos os anos)`;
@@ -453,7 +453,7 @@ function getPeriodLabel(state, selectedYears) {
     const block = state.blocks.all.find(item => item.key === state.blockKey);
     if (!block) return `${selectedYears[0]}-${selectedYears[selectedYears.length - 1]}`;
     return block.complete
-      ? `${block.label} (bloco automatico de 5 anos)`
+      ? `${block.label} (bloco autom\u00e1tico de 5 anos)`
       : `${block.label} (bloco incompleto)`;
   }
 
@@ -470,8 +470,8 @@ function deriveDatasusComparison(state, stats) {
   if (!state.parsed) {
     return {
       ok: false,
-      primaryError: 'Nao foi possivel interpretar o arquivo DATASUS enviado.',
-      validationErrors: ['Nao foi possivel interpretar o arquivo DATASUS enviado.'],
+      primaryError: 'N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.',
+      validationErrors: ['N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.'],
       selectedYears: [],
       derivedRows: [],
       vectors: { A: [], B: [] },
@@ -487,8 +487,8 @@ function deriveDatasusComparison(state, stats) {
   if (!selectedYears.length) {
     return {
       ok: false,
-      primaryError: 'Nenhum ano valido foi encontrado no periodo selecionado.',
-      validationErrors: ['Nenhum ano valido foi encontrado no periodo selecionado.'],
+      primaryError: 'Nenhum ano v\u00e1lido foi encontrado no per\u00edodo selecionado.',
+      validationErrors: ['Nenhum ano v\u00e1lido foi encontrado no per\u00edodo selecionado.'],
       selectedYears: [],
       derivedRows: [],
       vectors: { A: [], B: [] },
@@ -520,7 +520,7 @@ function deriveDatasusComparison(state, stats) {
         rowId: item.row.id,
         rowLabel: item.row.cleanLabel,
         groupKey: item.group,
-        reason: 'Sem valores numericos no periodo selecionado.'
+        reason: 'Sem valores num\u00e9ricos no per\u00edodo selecionado.'
       });
       return;
     }
@@ -532,7 +532,7 @@ function deriveDatasusComparison(state, stats) {
         rowId: item.row.id,
         rowLabel: item.row.cleanLabel,
         groupKey: item.group,
-        reason: 'Resumo invalido apos a filtragem.'
+        reason: 'Resumo inv\u00e1lido ap\u00f3s a filtragem.'
       });
       return;
     }
@@ -557,16 +557,16 @@ function deriveDatasusComparison(state, stats) {
   const validationErrors = [];
 
   if (!derivedRows.length && selectedRows.length) {
-    validationErrors.push('O periodo selecionado nao gerou valores suficientes.');
+    validationErrors.push('O per\u00edodo selecionado n\u00e3o gerou valores suficientes.');
   }
   if (vectors.A.some(value => Number.isNaN(value)) || vectors.B.some(value => Number.isNaN(value))) {
-    validationErrors.push('Os vetores finais contem valores invalidos.');
+    validationErrors.push('Os vetores finais cont\u00eam valores inv\u00e1lidos.');
   }
   if (validCounts.A < 2) {
-    validationErrors.push('Grupo A precisa ter pelo menos 2 observacoes validas.');
+    validationErrors.push('Grupo A precisa ter pelo menos 2 observa\u00e7\u00f5es v\u00e1lidas.');
   }
   if (validCounts.B < 2) {
-    validationErrors.push('Grupo B precisa ter pelo menos 2 observacoes validas.');
+    validationErrors.push('Grupo B precisa ter pelo menos 2 observa\u00e7\u00f5es v\u00e1lidas.');
   }
 
   return {
@@ -643,7 +643,7 @@ function buildDistributionSvg(g1, g2, label1, label2, stats, utils) {
   }
 
   return `
-    <svg class="groupplot-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Distribuicao dos grupos">
+    <svg class="groupplot-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Distribui\u00e7\u00e3o dos grupos">
       <rect x="0" y="0" width="${width}" height="${height}" rx="20" fill="#fff"/>
       ${grid}
       <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#8da1bc"/>
@@ -670,7 +670,7 @@ function buildMeanCiSvg(result, labels, utils) {
   const x2 = 590;
 
   return `
-    <svg class="groupplot-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Medias e intervalo de confianca">
+    <svg class="groupplot-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="M\u00e9dias e intervalo de confian\u00e7a">
       <rect x="0" y="0" width="${width}" height="${height}" rx="20" fill="#fff"/>
       <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#8da1bc"/>
       <line x1="${x1}" y1="${y(result.m1).toFixed(2)}" x2="${x2}" y2="${y(result.m2).toFixed(2)}" stroke="#94a3b8" stroke-dasharray="6 5"/>
@@ -683,7 +683,7 @@ function buildMeanCiSvg(result, labels, utils) {
       <line x1="${width / 2 - 16}" y1="${y(result.ci[1]).toFixed(2)}" x2="${width / 2 + 16}" y2="${y(result.ci[1]).toFixed(2)}" stroke="#1e293b" stroke-width="3"/>
       <text x="${x1}" y="${height - 20}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(labels[0])}</text>
       <text x="${x2}" y="${height - 20}" text-anchor="middle" fill="#334155" font-size="13" font-weight="700">${utils.escapeHtml(labels[1])}</text>
-      <text x="${width / 2}" y="${margin.top}" text-anchor="middle" fill="#334155" font-size="12" font-weight="700">IC95% da diferenca (${utils.escapeHtml(labels[0])} - ${utils.escapeHtml(labels[1])})</text>
+      <text x="${width / 2}" y="${margin.top}" text-anchor="middle" fill="#334155" font-size="12" font-weight="700">IC95% da diferen\u00e7a (${utils.escapeHtml(labels[0])} - ${utils.escapeHtml(labels[1])})</text>
     </svg>
   `;
 }
@@ -746,7 +746,7 @@ function buildResultChartsHtml(result, labels, g1, g2, stats, utils) {
     <article class="chart-card">
       <h4>Grafico 2 · Comparacao de medias e IC95%</h4>
       <div class="chart-wrap">${buildMeanCiSvg(result, labels, utils)}</div>
-      <div class="small-note" style="margin-top:10px;">A barra central indica o IC95% da diferenca (${utils.escapeHtml(labels[0])} - ${utils.escapeHtml(labels[1])}).</div>
+      <div class="small-note" style="margin-top:10px;">A barra central indica o IC95% da diferen\u00e7a (${utils.escapeHtml(labels[0])} - ${utils.escapeHtml(labels[1])}).</div>
     </article>
   `;
 }
