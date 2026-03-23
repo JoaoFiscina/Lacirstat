@@ -1,0 +1,244 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bioestatística LACIR</title>
+  <link rel="stylesheet" href="./assets/css/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>Bioestatística LACIR</h1>
+        <p>Calculadora modular de testes estatísticos</p>
+      </div>
+
+      <nav id="test-nav" class="test-nav"><button type="button" class="test-link active" data-test-id="t-student">
+      <span class="test-link-title">t de Student</span>
+      <span class="test-link-subtitle">Comparação entre duas médias</span>
+    </button></nav>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <h2 id="page-title">t de Student</h2>
+        <p id="page-subtitle">Comparacao entre duas medias</p>
+      </header>
+
+      <section id="module-root" class="module-root">
+    <div class="t-module">
+      <section class="t-panel t-panel-hero">
+        <div class="t-panel-hero-copy">
+          <span class="t-eyebrow">t de Student</span>
+          <h3>t de Student</h3>
+          <p>Compare dois grupos por colagem manual ou por importacao de arquivo DATASUS tabulado, mantendo cada regiao como observacao separada.</p>
+        </div>
+        <div class="t-guide-list">
+          <span class="t-guide-pill">Use o modo manual para colar valores diretamente.</span><span class="t-guide-pill">Use o modo Importar CSV DATASUS para ler regioes e anos automaticamente.</span><span class="t-guide-pill">Revise a base derivada final antes de rodar o teste.</span>
+        </div>
+      </section>
+
+      <div class="mode-tabs" role="tablist" aria-label="Modo de entrada">
+        <button type="button" class="mode-tab is-active" data-action="switch-mode" data-mode="manual" aria-selected="true">Modo manual</button>
+        <button type="button" class="mode-tab" data-action="switch-mode" data-mode="datasus" aria-selected="false">Importar CSV DATASUS</button>
+      </div>
+
+      <input id="datasus-file-input" type="file" accept=".csv,.txt,.tsv,text/csv,text/tab-separated-values" hidden="">
+
+      <section id="manual-panel" class="mode-panel">
+    <div class="mode-stack">
+      <section class="t-panel">
+        <div class="t-section-head">
+          <div>
+            <span class="t-step">Modo Manual</span>
+            <h4>Colagem direta dos grupos</h4>
+            <p>Digite ou cole um valor por linha. Tambem funciona com colunas coladas do Excel.</p>
+          </div>
+          <div class="t-toolbar">
+            <button type="button" class="button button-secondary" data-action="manual-example">Usar exemplo</button>
+            <button type="button" class="button button-secondary" data-action="manual-clear">Limpar</button>
+            <button type="button" class="button" data-action="manual-run">Rodar t test</button>
+          </div>
+        </div>
+
+        
+
+        <div class="manual-grid">
+          <label class="field">
+            <span>Nome do Grupo A</span>
+            <input type="text" value="Grupo A" data-manual-field="groupALabel">
+          </label>
+          <label class="field">
+            <span>Nome do Grupo B</span>
+            <input type="text" value="Grupo B" data-manual-field="groupBLabel">
+          </label>
+        </div>
+
+        <div class="manual-grid">
+          <label class="field">
+            <span>Valores do Grupo A</span>
+            <textarea rows="10" data-manual-field="groupAText" placeholder="4.8
+5.1
+4.9
+5
+4.7"></textarea>
+          </label>
+          <label class="field">
+            <span>Valores do Grupo B</span>
+            <textarea rows="10" data-manual-field="groupBText" placeholder="6.1
+5.8
+6
+5.9
+6.2"></textarea>
+          </label>
+        </div>
+      </section>
+
+      <section class="t-panel">
+        <div class="t-section-head">
+          <div>
+            <span class="t-step">Previa</span>
+            <h4>Vetores manuais detectados</h4>
+            <p>Revise a contagem de observacoes antes de executar o teste.</p>
+          </div>
+        </div>
+        
+    <div class="empty-card">
+      <h5>Sem dados manuais</h5>
+      <p>Cole os valores dos grupos ou use o exemplo para preencher o modulo.</p>
+    </div>
+  
+      </section>
+
+      <section class="t-panel">
+        <div class="t-section-head">
+          <div>
+            <span class="t-step">Resultado</span>
+            <h4>Saida estatistica</h4>
+            <p>O modulo usa comparacao entre duas medias com ajuste de Welch.</p>
+          </div>
+        </div>
+        
+    <div class="empty-card">
+      <h5>Resultado aguardando execucao</h5>
+      <p>Preencha os dois grupos e clique em Rodar t test.</p>
+    </div>
+  
+      </section>
+    </div>
+  </section>
+      <section id="datasus-panel" class="mode-panel is-hidden">
+    <div class="mode-stack">
+      <section class="t-panel">
+        <div class="t-section-head">
+          <div>
+            <span class="t-step">Importacao DATASUS</span>
+            <h4>CSV ou TSV tabulado</h4>
+            <p>O parser tenta <code>;</code>, depois tab e depois virgula. Metadados iniciais sao ignorados ate o cabecalho real.</p>
+          </div>
+          <div class="t-toolbar">
+            <button type="button" class="button" data-action="datasus-upload">Importar CSV DATASUS</button>
+            <button type="button" class="button button-secondary" data-action="datasus-example">Carregar exemplo DATASUS</button>
+            <button type="button" class="button button-secondary" data-action="datasus-clear">Limpar tudo</button>
+          </div>
+        </div>
+        
+        
+    <div class="empty-card">
+      <h5>Nenhum arquivo DATASUS carregado</h5>
+      <p>Importe um arquivo .csv, .txt ou .tsv para habilitar a leitura automatica.</p>
+    </div>
+  
+      </section>
+
+      <section class="t-panel">
+        <div class="t-section-head">
+          <div>
+            <span class="t-step">Base bruta</span>
+            <h4>Pre-visualizacao do arquivo importado</h4>
+            <p>Confirme as regioes, os anos detectados e a leitura do formato original.</p>
+          </div>
+        </div>
+        
+    <div class="empty-card">
+      <h5>Previa indisponivel</h5>
+      <p>A tabela bruta aparece depois que o arquivo DATASUS e reconhecido.</p>
+    </div>
+  
+      </section>
+
+      <section class="t-panel">
+        <div class="t-section-head">
+          <div>
+            <span class="t-step">Grupos</span>
+            <h4>Selecao das regioes</h4>
+            <p>Cada regiao pode pertencer a apenas um grupo por vez. A linha Total fica oculta por padrao.</p>
+          </div>
+        </div>
+        
+    <div class="empty-card">
+      <h5>Selecao indisponivel</h5>
+      <p>Importe um arquivo para listar as regioes detectadas.</p>
+    </div>
+  
+      </section>
+
+      <section class="t-panel">
+        <div class="t-section-head">
+          <div>
+            <span class="t-step">Periodo</span>
+            <h4>Configuracao da analise</h4>
+            <p>O periodo apenas resume os anos dentro de cada regiao. As regioes continuam como observacoes separadas.</p>
+          </div>
+          <button type="button" class="button" data-action="datasus-run">Rodar t test</button>
+        </div>
+        
+    <div class="empty-card">
+      <h5>Periodo indisponivel</h5>
+      <p>As opcoes de periodo aparecem apos a importacao do arquivo.</p>
+    </div>
+  
+      </section>
+
+      <section class="t-panel">
+        <div class="t-section-head">
+          <div>
+            <span class="t-step">Base derivada</span>
+            <h4>Tabela usada no t test</h4>
+            <p>Audite visualmente os valores resumidos por regiao antes da execucao.</p>
+          </div>
+        </div>
+        
+    <div class="empty-card">
+      <h5>Base derivada indisponivel</h5>
+      <p>Importe o arquivo e selecione as regioes para montar os vetores do teste.</p>
+    </div>
+  
+      </section>
+
+      <section class="t-panel">
+        <div class="t-section-head">
+          <div>
+            <span class="t-step">Resultado</span>
+            <h4>Saida estatistica</h4>
+            <p>O teste e executado apenas quando os vetores finais possuem pelo menos 2 observacoes validas em cada grupo.</p>
+          </div>
+        </div>
+        
+    <div class="empty-card">
+      <h5>Resultado aguardando execucao</h5>
+      <p>Monte os grupos, escolha o periodo e clique em Rodar t test.</p>
+    </div>
+  
+      </section>
+    </div>
+  </section>
+    </div>
+  </section>
+    </main>
+  </div>
+
+  <script type="module" src="./assets/js/app.js"></script>
+
+
+</body></html>
