@@ -1316,7 +1316,7 @@ export async function renderTestModule(ctx) {
   }
 
   function refreshManualPreview() {
-    const parsed = parseDataset(manual.pasteEl.value, stats);
+    const parsed = null;
 
     if (!parsed.previewRows.length) {
       manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
