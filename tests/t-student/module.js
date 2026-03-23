@@ -928,3 +928,167 @@ export async function renderTestModule(ctx) {
     result: null,
     error: ''
   };
+
+  function refreshManualPreview() {
+    const parsed = parseDataset(manual.pasteEl.value, stats);
+
+    if (!parsed.previewRows.length) {
+      manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
+      manual.groupSummaryEl.innerHTML = '';
+      return parsed;
+    }
+
+    const previewHeaders = parsed.mode === 'categorical_numeric'
+      ? ['Grupo', 'Valor']
+      : parsed.headers;
+
+    manual.previewEl.innerHTML = `
+      <div class="small-note">Formato detectado: <strong>${parsed.mode === 'categorical_numeric' ? 'Grupo + valor' : 'Duas colunas numéricas'}</strong> · Linhas válidas: ${parsed.validRows} · Linhas ignoradas: ${parsed.ignoredRows}</div>
+      ${utils.renderPreviewTable(previewHeaders, parsed.previewRows, 8)}
+    `;
+
+    manual.groupSummaryEl.innerHTML = `
+      <div class="metric-card"><div class="metric-label">Grupo detectado 1</div><div class="metric-value">${utils.escapeHtml(parsed.groupNames[0] || 'Grupo 1')}</div><div class="metric-mini">n = ${parsed.g1.length}</div></div>
+      <div class="metric-card"><div class="metric-label">Grupo detectado 2</div><div class="metric-value">${utils.escapeHtml(parsed.groupNames[1] || 'Grupo 2')}</div><div class="metric-mini">n = ${parsed.g2.length}</div></div>
+      <div class="metric-card"><div class="metric-label">Dados válidos</div><div class="metric-value">${parsed.validRows}</div><div class="metric-mini">Total importado = ${parsed.rawRows}</div></div>
+    `;
+
+    return parsed;
+  }
+
+  function runManualAnalysis() {
+    const parsed = refreshManualPreview();
+    const alpha = Number(manual.alphaEl.value || 0.05);
+
+    if (parsed.g1.length < 2 || parsed.g2.length < 2) {
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Precisamos de pelo menos 2 valores válidos em cada grupo para rodar o teste t.');
+      return;
+    }
+
+    const result = safeWelch(parsed.g1, parsed.g2, stats);
+    if (!Number.isFinite(result.t) || !Number.isFinite(result.p)) {
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Não foi possível calcular o teste com esses dados (verifique variabilidade e valores).');
+      return;
+    }
+
+    const labels = [parsed.groupNames[0] || 'Grupo 1', parsed.groupNames[1] || 'Grupo 2'];
+    const significant = result.p < alpha;
+
+    manual.statusEl.className = significant ? 'success-box' : 'status-bar';
+    manual.statusEl.textContent = significant
+      ? `Diferença estatisticamente significativa detectada (p ${utils.fmtP(result.p)} < ${alpha.toLocaleString('pt-BR')}).`
+      : `Não houve evidência estatística suficiente de diferença entre as médias (p ${utils.fmtP(result.p)}).`;
+    manual.metricsEl.innerHTML = buildResultMetricsHtml(result, labels, utils);
+    manual.chartEl.innerHTML = buildResultChartsHtml(result, labels, parsed.g1, parsed.g2, stats, utils);
+    manual.resultsEl.innerHTML = buildManualInterpretation(result, alpha, labels, manual.contextEl.value || config.defaultQuestion || '', utils);
+  }
+
+  function clearManual() {
+    manual.pasteEl.value = '';
+    manual.contextEl.value = config.defaultQuestion || 'As médias dos grupos são diferentes?';
+    manual.alphaEl.value = '0.05';
+    manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
+    manual.groupSummaryEl.innerHTML = '';
+    manual.statusEl.className = 'status-bar';
+    manual.statusEl.textContent = 'Campos limpos. Cole novos dados e rode novamente.';
+    manual.metricsEl.innerHTML = '';
+    manual.chartEl.innerHTML = '';
+    manual.resultsEl.innerHTML = '';
+  }
+
+  function invalidateDatasusRun() {
+    datasusState.result = null;
+    datasusRefs.metricsEl.innerHTML = '';
+    datasusRefs.chartEl.innerHTML = '';
+    datasusRefs.resultsEl.innerHTML = '';
+    datasusRefs.resultStatusEl.className = 'status-bar';
+    datasusRefs.resultStatusEl.textContent = datasusState.parsed
+      ? 'Revise a base derivada abaixo e clique em "Rodar t test" para atualizar o resultado.'
+      : 'Aguardando importação de arquivo.';
+  }
+
+  function resetDatasusState() {
+    datasusState.fileName = '';
+    datasusState.sourceText = '';
+    datasusState.parsed = null;
+    datasusState.blocks = [];
+    datasusState.selectionMap = {};
+    datasusState.showTotal = false;
+    datasusState.periodMode = 'range';
+    datasusState.singleYear = '';
+    datasusState.rangeStart = '';
+    datasusState.rangeEnd = '';
+    datasusState.blockKey = '';
+    datasusState.derived = null;
+    datasusState.result = null;
+    datasusState.error = '';
+    datasusRefs.fileEl.value = '';
+    datasusRefs.contextEl.value = config.defaultDatasusQuestion || 'Os grupos de regiões definidos pelo usuário apresentam médias diferentes?';
+    datasusRefs.alphaEl.value = '0.05';
+  }
+
+  function renderDatasusImportStatus() {
+    if (datasusState.error) {
+      datasusRefs.statusCardEl.className = 'error-box';
+      datasusRefs.statusCardEl.textContent = datasusState.error;
+      return;
+    }
+
+    if (!datasusState.parsed) {
+      datasusRefs.statusCardEl.className = 'status-bar';
+      datasusRefs.statusCardEl.textContent = 'Faça upload de um arquivo DATASUS para habilitar a seleção de grupos e período.';
+      return;
+    }
+
+    const firstYear = datasusState.parsed.years[0];
+    const lastYear = datasusState.parsed.years[datasusState.parsed.years.length - 1];
+    const measure = datasusState.parsed.measureLabel || datasusState.parsed.titleLine || 'Medida não identificada';
+
+    datasusRefs.statusCardEl.className = 'info-banner';
+    datasusRefs.statusCardEl.innerHTML = `
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Arquivo carregado</div>
+          <div class="metric-value tstudent-compact-value">${utils.escapeHtml(datasusState.fileName || 'arquivo importado')}</div>
+          <div class="metric-mini">Separador detectado: ${utils.escapeHtml(labelFromDelimiter(datasusState.parsed.delimiter))}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Regiões detectadas</div>
+          <div class="metric-value">${datasusState.parsed.selectableRows.length}</div>
+          <div class="metric-mini">Linhas Total detectadas: ${datasusState.parsed.totalRows.length}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Anos detectados</div>
+          <div class="metric-value">${firstYear}–${lastYear}</div>
+          <div class="metric-mini">${datasusState.parsed.years.length} colunas anuais · ${datasusState.parsed.rawRowCount} linhas na tabela</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Medida detectada</div>
+          <div class="metric-value tstudent-compact-value">${utils.escapeHtml(measure)}</div>
+          <div class="metric-mini">Linhas ignoradas com segurança: ${datasusState.parsed.ignoredRows}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDatasusPreview() {
+    if (datasusState.error) {
+      datasusRefs.previewEl.innerHTML = `<div class="error-box">${utils.escapeHtml(datasusState.error)}</div>`;
+      return;
+    }
+
+    if (!datasusState.parsed) {
+      datasusRefs.previewEl.innerHTML = '<div class="small-note">Nenhuma base importada ainda.</div>';
+      return;
+    }
+
+    const metadataHtml = datasusState.parsed.metadataLines.length
+      ? `<div class="small-note" style="margin-bottom:12px;">Metadados detectados: ${utils.escapeHtml(datasusState.parsed.metadataLines.join(' | '))}</div>`
+      : '';
+
+    datasusRefs.previewEl.innerHTML = `
+      ${metadataHtml}
+      <div class="small-note" style="margin-bottom:10px;">Cabeçalho DATASUS identificado automaticamente na linha ${datasusState.parsed.headerRowIndex + 1}. A linha "Total" é reconhecida, mas fica excluída por padrão da seleção.</div>
+      ${utils.renderPreviewTable(datasusState.parsed.previewHeaders, datasusState.parsed.previewRows, 10)}
+    `;
+  }
