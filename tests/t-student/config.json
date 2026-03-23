@@ -1,8 +1,9 @@
 {
   "title": "t de Student para grupos independentes",
   "subtitle": "Comparação didática entre duas médias",
-  "description": "Este módulo aplica o teste t de Welch para comparar duas médias independentes com interpretação automática, resumo dos grupos e visualização clara da dispersão dos dados.",
+  "description": "Este módulo aplica o teste t de Welch para comparar duas médias independentes com interpretação automática, resumo dos grupos, visualização da dispersão e dois fluxos de entrada: manual e importação DATASUS.",
   "defaultQuestion": "As médias dos dois grupos são diferentes?",
+  "defaultDatasusQuestion": "As médias resumidas das regiões selecionadas diferem entre Grupo A e Grupo B?",
   "didacticCards": [
     {
       "title": "O que este teste faz",
@@ -25,5 +26,6 @@
       "text": "O p-valor não informa magnitude nem relevância prática. Sempre leia junto com IC95% e tamanho de efeito."
     }
   ],
-  "exampleText": "Grupo A\tGrupo B\n4,8\t6,1\n5,1\t5,8\n4,9\t6,0\n5,0\t5,9\n4,7\t6,2\n5,2\t5,7\n4,6\t6,3"
+  "exampleText": "Grupo A\tGrupo B\n4,8\t6,1\n5,1\t5,8\n4,9\t6,0\n5,0\t5,9\n4,7\t6,2\n5,2\t5,7\n4,6\t6,3",
+  "exampleDatasusText": "Procedimentos hospitalares do SUS - por local de internação - Brasil\nMédia permanência por Região e Ano processamento\nGrupo procedimento: Internações clínicas\nSubgrupo proced.: Exemplo didático\nPeríodo: 2008 a 2026\nRegião\t2008\t2009\t2010\t2011\t2012\t2013\t2014\t2015\t2016\t2017\t2018\t2019\t2020\t2021\t2022\t2023\t2024\t2025\t2026\tTotal\n1 Região Norte\t7,1\t7,4\t7,8\t8,0\t8,3\t8,1\t7,9\t8,2\t8,4\t8,0\t7,8\t7,9\t8,1\t8,0\t7,7\t7,8\t7,9\t8,0\t8,1\t150,5\n2 Região Nordeste\t3,8\t4,0\t4,1\t4,2\t4,1\t4,0\t4,2\t4,3\t4,1\t4,0\t4,1\t4,2\t4,3\t4,2\t4,1\t4,0\t4,1\t4,2\t4,3\t79,3\n3 Região Sudeste\t5,0\t5,1\t5,2\t5,0\t5,1\t5,2\t5,3\t5,2\t5,1\t5,0\t5,1\t5,2\t5,3\t5,1\t5,0\t5,1\t5,2\t5,3\t5,1\t97,6\n4 Região Sul\t4,6\t4,7\t4,8\t4,7\t4,6\t4,8\t4,9\t4,8\t4,7\t4,8\t4,7\t4,8\t4,9\t4,8\t4,7\t4,8\t4,9\t4,8\t4,7\t90,7\n5 Região Centro-Oeste\t4,5\t4,6\t4,7\t4,8\t4,7\t4,6\t4,8\t4,9\t4,8\t4,7\t4,6\t4,7\t4,8\t4,9\t4,8\t4,7\t4,8\t4,9\t4,8\t90,3\nTotal\t5,0\t5,2\t5,3\t5,4\t5,4\t5,3\t5,4\t5,5\t5,4\t5,3\t5,3\t5,4\t5,5\t5,4\t5,3\t5,3\t5,4\t5,5\t5,4\t508,4"
 }

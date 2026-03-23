@@ -1421,7 +1421,6 @@ export async function renderTestModule(ctx) {
       renderDatasusControls();
       renderDatasusDerived();
       renderDatasusResultState(datasusState.error, 'error');
-      console.error(error);
     }
   }
 
