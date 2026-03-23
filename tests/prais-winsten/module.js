@@ -1,3 +1,15 @@
+import { createDatasusWizard } from '../../assets/js/datasus-wizard.js';
+import {
+  derivePraisSeries,
+  getCategoryOptions,
+  getMetricOptions,
+  getPrimaryMetricKey
+} from '../../assets/js/datasus-normalizer.js';
+
+function clonePlain(value) {
+  return value ? JSON.parse(JSON.stringify(value)) : value;
+}
+
 function buildExampleText(config) {
   const rows = Array.isArray(config.exampleRows) ? config.exampleRows : [];
   const header = Array.isArray(config.exampleHeaders) ? config.exampleHeaders.join('\t') : 'Tempo\tIndicador';
@@ -175,7 +187,7 @@ function buildInterpretation(result, names) {
 }
 
 export async function renderTestModule(ctx) {
-  const { root, config, utils, stats } = ctx;
+  const { root, config, utils, stats, shared } = ctx;
   const exampleText = buildExampleText(config);
 
   root.classList.add('prais-module');
@@ -194,6 +206,18 @@ export async function renderTestModule(ctx) {
             <p>${utils.escapeHtml(card.text)}</p>
           </article>
         `).join('')}
+      </section>
+
+      <section class="surface-card decorated">
+        <h4>Camada Universal DATASUS</h4>
+        <p class="small-note">Importe, revise e confirme a base DATASUS. Depois escolha a categoria e a medida para montar a serie temporal final.</p>
+        <div id="pw-datasus-wizard" style="margin-top:14px;"></div>
+      </section>
+
+      <section class="surface-card">
+        <h4>Serie derivada do DATASUS</h4>
+        <div id="pw-datasus-controls" class="small-note">Confirme uma base DATASUS para liberar a montagem assistida da serie.</div>
+        <div id="pw-datasus-preview" style="margin-top:14px;"></div>
       </section>
 
       <section class="surface-card decorated">
@@ -244,6 +268,79 @@ export async function renderTestModule(ctx) {
     charts: root.querySelector('#pw-charts'),
     results: root.querySelector('#pw-results')
   };
+  const datasusWizardEl = root.querySelector('#pw-datasus-wizard');
+  const datasusControlsEl = root.querySelector('#pw-datasus-controls');
+  const datasusPreviewEl = root.querySelector('#pw-datasus-preview');
+
+  const datasusState = {
+    session: null,
+    sharedSession: clonePlain(shared?.datasus?.lastSession || null),
+    sourceId: '',
+    metricBySource: {},
+    categoryKey: '',
+    derived: null
+  };
+
+  function currentDatasusSession() {
+    if (datasusState.session?.confirmedSources?.length) return datasusState.session;
+    if (datasusState.sharedSession?.confirmedSources?.length) return datasusState.sharedSession;
+    return null;
+  }
+
+  function confirmedSources() {
+    return currentDatasusSession()?.confirmedSources || [];
+  }
+
+  function getSource(sourceId) {
+    return confirmedSources().find(source => source.id === sourceId) || null;
+  }
+
+  function ensureDatasusDefaults() {
+    const sources = confirmedSources();
+    if (!sources.length) {
+      datasusState.derived = null;
+      datasusState.sourceId = '';
+      datasusState.categoryKey = '';
+      return;
+    }
+
+    if (!sources.some(source => source.id === datasusState.sourceId)) {
+      datasusState.sourceId = sources[0].id;
+    }
+
+    sources.forEach(source => {
+      if (!datasusState.metricBySource[source.id]) {
+        datasusState.metricBySource[source.id] = getPrimaryMetricKey(source);
+      }
+    });
+
+    const source = getSource(datasusState.sourceId);
+    const categories = getCategoryOptions(source, true);
+    if (!categories.some(option => option.key === datasusState.categoryKey)) {
+      datasusState.categoryKey = categories[0]?.key || '';
+    }
+  }
+
+  function deriveDatasusSeries() {
+    ensureDatasusDefaults();
+    const source = getSource(datasusState.sourceId);
+
+    if (!source) {
+      return {
+        ok: false,
+        primaryError: 'Confirme pelo menos uma base DATASUS para montar a serie temporal.',
+        errors: ['Confirme pelo menos uma base DATASUS para montar a serie temporal.'],
+        rows: []
+      };
+    }
+
+    return derivePraisSeries({
+      source,
+      metricKey: datasusState.metricBySource[source.id],
+      categoryKey: datasusState.categoryKey,
+      stats
+    });
+  }
 
   const clearOutput = (statusMsg = 'Área limpa. Cole os dados ou carregue o exemplo.') => {
     els.status.className = 'status-bar';
