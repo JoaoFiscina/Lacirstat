@@ -682,3 +682,221 @@ export async function renderTestModule(ctx) {
       invalidateDatasusResults();
     });
   }
+
+  function renderDatasusAnalysis() {
+    const sources = confirmedSources();
+    if (!sources.length) {
+      const hasShared = Boolean(shared?.datasus?.lastSession?.confirmedSources?.length);
+      datasusRefs.analysisEl.innerHTML = `
+        <div class="status-bar">Confirme pelo menos uma base DATASUS no wizard para escolher o tipo de comparacao.</div>
+        ${hasShared ? '<div class="actions-row" style="margin-top:14px;"><button type="button" class="btn-secondary" id="t-datasus-use-shared">Usar ultima sessao DATASUS confirmada</button></div>' : ''}
+      `;
+      datasusRefs.analysisEl.querySelector('#t-datasus-use-shared')?.addEventListener('click', () => {
+        datasusState.sharedSession = clonePlain(shared.datasus.lastSession);
+        ensureDatasusDefaults();
+        renderDatasusAnalysis();
+        renderDatasusSelection();
+        renderDatasusDerived();
+        invalidateDatasusResults('Ultima sessao DATASUS confirmada carregada neste modulo.');
+      });
+      return;
+    }
+
+    const suggestedPair = findBestNormalizedPair(sources);
+    const suggestion = suggestedPair && suggestedPair.sharedCategoryCount >= 2
+      ? `Isso parece um cenario pareado: ${suggestedPair.sharedCategoryCount} unidades aparecem em duas bases compativeis.`
+      : 'Sem pareamento claro detectado, o fluxo sugere comecar por grupos independentes.';
+
+    datasusRefs.analysisEl.innerHTML = `
+      <div class="${suggestedPair ? 'success-box' : 'status-bar'}">${utils.escapeHtml(suggestion)}</div>
+      <div class="tstudent-choice-grid" style="margin-top:14px;">
+        <button type="button" class="tstudent-choice-card ${datasusState.analysisMode === 'paired' ? 'is-active' : ''}" data-analysis-mode="paired">
+          <strong>1. Comparar dois procedimentos</strong>
+          <span>Seleciona duas bases compativeis e roda <strong>t pareado</strong>.</span>
+        </button>
+        <button type="button" class="tstudent-choice-card ${datasusState.analysisMode === 'independent' ? 'is-active' : ''}" data-analysis-mode="independent">
+          <strong>2. Comparar dois grupos diferentes</strong>
+          <span>Seleciona categorias do mesmo arquivo e roda <strong>t independente (Welch)</strong>.</span>
+        </button>
+        <button type="button" class="tstudent-choice-card" data-analysis-mode="manual">
+          <strong>3. Modo manual</strong>
+          <span>Volta para o fluxo original do modulo.</span>
+        </button>
+      </div>
+    `;
+
+    datasusRefs.analysisEl.querySelectorAll('[data-analysis-mode]').forEach(button => {
+      button.addEventListener('click', () => {
+        const mode = button.dataset.analysisMode;
+        if (mode === 'manual') {
+          setActiveModePanel('manual');
+          return;
+        }
+        datasusState.analysisMode = mode;
+        ensureDatasusDefaults();
+        renderDatasusAnalysis();
+        renderDatasusSelection();
+        renderDatasusDerived();
+        invalidateDatasusResults();
+      });
+    });
+  }
+
+  function renderIndependentSelection(source) {
+    const categories = getCategoryOptions(source, datasusState.includeTotalBySource[source.id]);
+    const assignments = ensureAssignments(source);
+    const metricOptions = getMetricOptions(source);
+    const countA = Object.values(assignments).filter(value => value === 'A').length;
+    const countB = Object.values(assignments).filter(value => value === 'B').length;
+
+    datasusRefs.selectionEl.innerHTML = `
+      <div class="${countA && countB ? 'success-box' : 'status-bar'}">${utils.escapeHtml(countA && countB ? 'Isso parece comparacao entre grupos independentes: as categorias foram separadas em grupos distintos.' : 'Selecione quais categorias entrarao no Grupo A e no Grupo B.')}</div>
+      <div class="form-grid three" style="margin-top:14px;">
+        <div>
+          <label for="t-datasus-source">Base normalizada</label>
+          <select id="t-datasus-source">
+            ${confirmedSources().map(item => `<option value="${utils.escapeHtml(item.id)}"${item.id === source.id ? ' selected' : ''}>${utils.escapeHtml(procedureLabel(item))}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="t-datasus-metric">Medida</label>
+          <select id="t-datasus-metric">
+            ${metricOptions.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.metricBySource[source.id] ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="tstudent-toggle">
+            <input id="t-datasus-show-total" type="checkbox"${datasusState.includeTotalBySource[source.id] ? ' checked' : ''} />
+            <span>Incluir Total como opcao avancada</span>
+          </label>
+        </div>
+      </div>
+      ${buildPeriodControlsHtml()}
+      <div class="tstudent-group-picker" style="margin-top:14px;">
+        <div class="tstudent-group-picker-head">
+          <div>${utils.escapeHtml(source.normalized.schema.categoryLabel || 'Categoria')}</div>
+          <div>Grupo A</div>
+          <div>Grupo B</div>
+        </div>
+        ${categories.map(option => `
+          <div class="tstudent-group-row ${option.isTotal ? 'is-total-row' : ''}">
+            <div><strong>${utils.escapeHtml(option.label)}</strong></div>
+            <label class="tstudent-checkbox-cell">
+              <input type="checkbox" data-action="assign-group" data-category-key="${utils.escapeHtml(option.key)}" data-group="A"${assignments[option.key] === 'A' ? ' checked' : ''} />
+            </label>
+            <label class="tstudent-checkbox-cell">
+              <input type="checkbox" data-action="assign-group" data-category-key="${utils.escapeHtml(option.key)}" data-group="B"${assignments[option.key] === 'B' ? ' checked' : ''} />
+            </label>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-source')?.addEventListener('change', event => {
+      datasusState.sourceId = event.target.value;
+      ensureDatasusDefaults();
+      renderDatasusSelection();
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-metric')?.addEventListener('change', event => {
+      datasusState.metricBySource[source.id] = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-show-total')?.addEventListener('change', event => {
+      datasusState.includeTotalBySource[source.id] = event.target.checked;
+      renderDatasusSelection();
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelectorAll('[data-action="assign-group"]').forEach(input => {
+      input.addEventListener('change', event => {
+        const categoryKey = event.target.dataset.categoryKey;
+        const group = event.target.dataset.group;
+        if (event.target.checked) {
+          assignments[categoryKey] = group;
+        } else if (assignments[categoryKey] === group) {
+          assignments[categoryKey] = null;
+        }
+        renderDatasusSelection();
+        renderDatasusDerived();
+        invalidateDatasusResults();
+      });
+    });
+
+    attachPeriodEvents();
+  }
+
+  function renderPairedSelection(leftSource, rightSource) {
+    const metricOptionsLeft = getMetricOptions(leftSource);
+    const metricOptionsRight = getMetricOptions(rightSource);
+    const suggestion = findBestNormalizedPair(confirmedSources());
+
+    datasusRefs.selectionEl.innerHTML = `
+      <div class="${suggestion ? 'success-box' : 'status-bar'}">${utils.escapeHtml(suggestion ? `Isso parece um cenario pareado: ${suggestion.sharedCategoryCount} unidades em comum foram detectadas.` : 'Selecione duas bases com unidades em comum para montar a comparacao pareada.')}</div>
+      <div class="form-grid two" style="margin-top:14px;">
+        <div>
+          <label for="t-datasus-left">Procedimento A</label>
+          <select id="t-datasus-left">
+            ${confirmedSources().map(item => `<option value="${utils.escapeHtml(item.id)}"${item.id === leftSource.id ? ' selected' : ''}>${utils.escapeHtml(procedureLabel(item))}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="t-datasus-right">Procedimento B</label>
+          <select id="t-datasus-right">
+            ${confirmedSources().map(item => `<option value="${utils.escapeHtml(item.id)}"${item.id === rightSource.id ? ' selected' : ''}>${utils.escapeHtml(procedureLabel(item))}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-grid two" style="margin-top:14px;">
+        <div>
+          <label for="t-datasus-left-metric">Medida de A</label>
+          <select id="t-datasus-left-metric">
+            ${metricOptionsLeft.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.metricBySource[leftSource.id] ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="t-datasus-right-metric">Medida de B</label>
+          <select id="t-datasus-right-metric">
+            ${metricOptionsRight.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.metricBySource[rightSource.id] ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      ${buildPeriodControlsHtml()}
+      <div class="small-note" style="margin-top:14px;">A tabela derivada mantera apenas unidades com os dois valores no periodo selecionado.</div>
+    `;
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-left')?.addEventListener('change', event => {
+      datasusState.leftSourceId = event.target.value;
+      ensureDatasusDefaults();
+      renderDatasusSelection();
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-right')?.addEventListener('change', event => {
+      datasusState.rightSourceId = event.target.value;
+      ensureDatasusDefaults();
+      renderDatasusSelection();
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-left-metric')?.addEventListener('change', event => {
+      datasusState.metricBySource[leftSource.id] = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-right-metric')?.addEventListener('change', event => {
+      datasusState.metricBySource[rightSource.id] = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    attachPeriodEvents();
+  }
