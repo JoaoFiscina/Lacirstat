@@ -786,3 +786,14 @@ input[type="file"] {
     min-width: 480px;
   }
 }
+
+@media (max-width: 760px) {
+  .tstudent-module .surface-card {
+    padding: 18px;
+  }
+
+  .tstudent-module .scatter-svg,
+  .tstudent-module .groupplot-svg {
+    min-width: 420px;
+  }
+}
