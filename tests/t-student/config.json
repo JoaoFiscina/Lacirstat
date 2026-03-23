@@ -1,31 +1,31 @@
 {
   "title": "t de Student para grupos independentes",
-  "subtitle": "Comparação didática entre duas médias",
-  "description": "Este módulo aplica o teste t de Welch para comparar duas médias independentes com interpretação automática, resumo dos grupos, visualização da dispersão e dois fluxos de entrada: manual e importação DATASUS.",
-  "defaultQuestion": "As médias dos dois grupos são diferentes?",
-  "defaultDatasusQuestion": "As médias resumidas das regiões selecionadas diferem entre Grupo A e Grupo B?",
+  "subtitle": "Compara\u00e7\u00e3o did\u00e1tica entre duas m\u00e9dias",
+  "description": "Este m\u00f3dulo aplica o teste t de Welch para comparar duas m\u00e9dias independentes com interpreta\u00e7\u00e3o autom\u00e1tica, resumo dos grupos, visualiza\u00e7\u00e3o da dispers\u00e3o e dois fluxos de entrada: manual e importa\u00e7\u00e3o DATASUS.",
+  "defaultQuestion": "As m\u00e9dias dos dois grupos s\u00e3o diferentes?",
+  "defaultDatasusQuestion": "As m\u00e9dias resumidas das categorias selecionadas diferem entre Grupo A e Grupo B?",
   "didacticCards": [
     {
       "title": "O que este teste faz",
-      "text": "Compara as médias de dois grupos independentes e estima se a diferença observada pode ser atribuída ao acaso."
+      "text": "Compara as m\u00e9dias de dois grupos independentes e estima se a diferen\u00e7a observada pode ser atribu\u00edda ao acaso."
     },
     {
       "title": "Quando usar t de Student",
-      "text": "Use quando há uma variável numérica e dois grupos independentes, como tratamento versus controle ou turma A versus turma B."
+      "text": "Use quando h\u00e1 uma vari\u00e1vel num\u00e9rica e dois grupos independentes, como tratamento versus controle ou turma A versus turma B."
     },
     {
       "title": "Independentes x pareados",
-      "text": "Aqui os grupos são independentes. Para antes/depois das mesmas pessoas, o teste adequado é t pareado."
+      "text": "Aqui os grupos s\u00e3o independentes. Para antes e depois das mesmas pessoas, o teste adequado \u00e9 o t pareado."
     },
     {
       "title": "Cuidados antes de interpretar",
-      "text": "Cheque amostra mínima por grupo, possíveis outliers e coerência clínica da diferença, não apenas o p-valor."
+      "text": "Cheque amostra m\u00ednima por grupo, poss\u00edveis outliers e coer\u00eancia cl\u00ednica da diferen\u00e7a, n\u00e3o apenas o p-valor."
     },
     {
-      "title": "O que o p-valor não diz sozinho",
-      "text": "O p-valor não informa magnitude nem relevância prática. Sempre leia junto com IC95% e tamanho de efeito."
+      "title": "O que o p-valor n\u00e3o diz sozinho",
+      "text": "O p-valor n\u00e3o informa magnitude nem relev\u00e2ncia pr\u00e1tica. Sempre leia junto com IC95% e tamanho de efeito."
     }
   ],
   "exampleText": "Grupo A\tGrupo B\n4,8\t6,1\n5,1\t5,8\n4,9\t6,0\n5,0\t5,9\n4,7\t6,2\n5,2\t5,7\n4,6\t6,3",
-  "exampleDatasusText": "Procedimentos hospitalares do SUS - por local de internação - Brasil\nMédia permanência por Região e Ano processamento\nGrupo procedimento: Internações clínicas\nSubgrupo proced.: Exemplo didático\nPeríodo: 2008 a 2026\nRegião\t2008\t2009\t2010\t2011\t2012\t2013\t2014\t2015\t2016\t2017\t2018\t2019\t2020\t2021\t2022\t2023\t2024\t2025\t2026\tTotal\n1 Região Norte\t7,1\t7,4\t7,8\t8,0\t8,3\t8,1\t7,9\t8,2\t8,4\t8,0\t7,8\t7,9\t8,1\t8,0\t7,7\t7,8\t7,9\t8,0\t8,1\t150,5\n2 Região Nordeste\t3,8\t4,0\t4,1\t4,2\t4,1\t4,0\t4,2\t4,3\t4,1\t4,0\t4,1\t4,2\t4,3\t4,2\t4,1\t4,0\t4,1\t4,2\t4,3\t79,3\n3 Região Sudeste\t5,0\t5,1\t5,2\t5,0\t5,1\t5,2\t5,3\t5,2\t5,1\t5,0\t5,1\t5,2\t5,3\t5,1\t5,0\t5,1\t5,2\t5,3\t5,1\t97,6\n4 Região Sul\t4,6\t4,7\t4,8\t4,7\t4,6\t4,8\t4,9\t4,8\t4,7\t4,8\t4,7\t4,8\t4,9\t4,8\t4,7\t4,8\t4,9\t4,8\t4,7\t90,7\n5 Região Centro-Oeste\t4,5\t4,6\t4,7\t4,8\t4,7\t4,6\t4,8\t4,9\t4,8\t4,7\t4,6\t4,7\t4,8\t4,9\t4,8\t4,7\t4,8\t4,9\t4,8\t90,3\nTotal\t5,0\t5,2\t5,3\t5,4\t5,4\t5,3\t5,4\t5,5\t5,4\t5,3\t5,3\t5,4\t5,5\t5,4\t5,3\t5,3\t5,4\t5,5\t5,4\t508,4"
+  "exampleDatasusText": "Procedimentos hospitalares do SUS - por local de interna\u00e7\u00e3o - Brasil\nM\u00e9dia perman\u00eancia por Regi\u00e3o e Ano processamento\nGrupo procedimento: Interna\u00e7\u00f5es cl\u00ednicas\nSubgrupo proced.: Exemplo did\u00e1tico\nPer\u00edodo: 2008 a 2026\nRegi\u00e3o\t2008\t2009\t2010\t2011\t2012\t2013\t2014\t2015\t2016\t2017\t2018\t2019\t2020\t2021\t2022\t2023\t2024\t2025\t2026\tTotal\n1 Regi\u00e3o Norte\t7,1\t7,4\t7,8\t8,0\t8,3\t8,1\t7,9\t8,2\t8,4\t8,0\t7,8\t7,9\t8,1\t8,0\t7,7\t7,8\t7,9\t8,0\t8,1\t150,5\n2 Regi\u00e3o Nordeste\t3,8\t4,0\t4,1\t4,2\t4,1\t4,0\t4,2\t4,3\t4,1\t4,0\t4,1\t4,2\t4,3\t4,2\t4,1\t4,0\t4,1\t4,2\t4,3\t79,3\n3 Regi\u00e3o Sudeste\t5,0\t5,1\t5,2\t5,0\t5,1\t5,2\t5,3\t5,2\t5,1\t5,0\t5,1\t5,2\t5,3\t5,1\t5,0\t5,1\t5,2\t5,3\t5,1\t97,6\n4 Regi\u00e3o Sul\t4,6\t4,7\t4,8\t4,7\t4,6\t4,8\t4,9\t4,8\t4,7\t4,8\t4,7\t4,8\t4,9\t4,8\t4,7\t4,8\t4,9\t4,8\t4,7\t90,7\n5 Regi\u00e3o Centro-Oeste\t4,5\t4,6\t4,7\t4,8\t4,7\t4,6\t4,8\t4,9\t4,8\t4,7\t4,6\t4,7\t4,8\t4,9\t4,8\t4,7\t4,8\t4,9\t4,8\t90,3\nTotal\t5,0\t5,2\t5,3\t5,4\t5,4\t5,3\t5,4\t5,5\t5,4\t5,3\t5,3\t5,4\t5,5\t5,4\t5,3\t5,3\t5,4\t5,5\t5,4\t508,4"
 }
