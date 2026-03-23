@@ -529,3 +529,156 @@ export async function renderTestModule(ctx) {
       datasusState.periodMode = 'single';
     }
   }
+
+  function selectedTimeKeys() {
+    const options = availableTimeOptions();
+    if (!options.length) return [];
+
+    if (datasusState.periodMode === 'single') {
+      return datasusState.singleTimeKey ? [datasusState.singleTimeKey] : [];
+    }
+
+    if (datasusState.periodMode === 'block') {
+      const block = buildTimeBlocks(options).find(item => item.key === datasusState.blockKey);
+      return block ? block.keys : [];
+    }
+
+    const indexStart = options.findIndex(option => option.key === datasusState.rangeStart);
+    const indexEnd = options.findIndex(option => option.key === datasusState.rangeEnd);
+    if (indexStart === -1 || indexEnd === -1) return [];
+    const min = Math.min(indexStart, indexEnd);
+    const max = Math.max(indexStart, indexEnd);
+    return options.slice(min, max + 1).map(option => option.key);
+  }
+
+  function invalidateDatasusResults(message = 'A base derivada foi atualizada. Revise os dados e execute o teste.') {
+    datasusRefs.statusEl.className = 'status-bar';
+    datasusRefs.statusEl.textContent = message;
+    datasusRefs.metricsEl.innerHTML = '';
+    datasusRefs.chartEl.innerHTML = '';
+    datasusRefs.resultsEl.innerHTML = '';
+    datasusRefs.runBtn.disabled = !(datasusState.derived && datasusState.derived.ok);
+  }
+
+  function deriveCurrentData() {
+    ensureDatasusDefaults();
+
+    if (!confirmedSources().length) {
+      return {
+        ok: false,
+        mode: datasusState.analysisMode,
+        primaryError: 'Confirme pelo menos uma base DATASUS antes de prosseguir.',
+        errors: ['Confirme pelo menos uma base DATASUS antes de prosseguir.']
+      };
+    }
+
+    if (datasusState.analysisMode === 'paired') {
+      const leftSource = getSource(datasusState.leftSourceId);
+      const rightSource = getSource(datasusState.rightSourceId);
+      return derivePairedTTest({
+        leftSource,
+        rightSource,
+        leftMetricKey: datasusState.metricBySource[leftSource?.id],
+        rightMetricKey: datasusState.metricBySource[rightSource?.id],
+        timeKeys: selectedTimeKeys(),
+        includeTotal: Boolean(datasusState.includeTotalBySource[leftSource?.id] || datasusState.includeTotalBySource[rightSource?.id]),
+        stats
+      });
+    }
+
+    const source = getSource(datasusState.sourceId);
+    const assignments = ensureAssignments(source);
+    const groupAKeys = Object.entries(assignments).filter(([, value]) => value === 'A').map(([key]) => key);
+    const groupBKeys = Object.entries(assignments).filter(([, value]) => value === 'B').map(([key]) => key);
+
+    return deriveIndependentTTest({
+      source,
+      metricKey: datasusState.metricBySource[source?.id],
+      groupAKeys,
+      groupBKeys,
+      timeKeys: selectedTimeKeys(),
+      includeTotal: Boolean(datasusState.includeTotalBySource[source?.id]),
+      stats
+    });
+  }
+
+  function buildPeriodControlsHtml() {
+    const options = availableTimeOptions();
+    if (!options.length) {
+      return '<div class="small-note" style="margin-top:14px;">Esta base nao possui eixo temporal utilizavel. Todos os registros validos serao considerados.</div>';
+    }
+
+    const blocks = buildTimeBlocks(options);
+
+    return `
+      <div class="form-grid three" style="margin-top:16px;">
+        <div>
+          <label for="t-datasus-period-mode">Periodo analisado</label>
+          <select id="t-datasus-period-mode">
+            <option value="single"${datasusState.periodMode === 'single' ? ' selected' : ''}>Ano unico (default)</option>
+            <option value="range"${datasusState.periodMode === 'range' ? ' selected' : ''}>Intervalo</option>
+            <option value="block"${datasusState.periodMode === 'block' ? ' selected' : ''}>Bloco de 5 periodos</option>
+          </select>
+        </div>
+        <div class="tstudent-period-field ${datasusState.periodMode === 'single' ? 'is-visible' : ''}">
+          <label for="t-datasus-single">Periodo</label>
+          <select id="t-datasus-single">
+            ${options.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.singleTimeKey ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="tstudent-period-field ${datasusState.periodMode === 'block' ? 'is-visible' : ''}">
+          <label for="t-datasus-block">Bloco</label>
+          <select id="t-datasus-block">
+            ${blocks.map(block => `<option value="${utils.escapeHtml(block.key)}"${block.key === datasusState.blockKey ? ' selected' : ''}>${utils.escapeHtml(block.label)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-grid two tstudent-range-grid ${datasusState.periodMode === 'range' ? 'is-visible' : ''}">
+        <div>
+          <label for="t-datasus-range-start">Inicio</label>
+          <select id="t-datasus-range-start">
+            ${options.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.rangeStart ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="t-datasus-range-end">Fim</label>
+          <select id="t-datasus-range-end">
+            ${options.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.rangeEnd ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    `;
+  }
+
+  function attachPeriodEvents() {
+    datasusRefs.selectionEl.querySelector('#t-datasus-period-mode')?.addEventListener('change', event => {
+      datasusState.periodMode = event.target.value;
+      renderDatasusSelection();
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-single')?.addEventListener('change', event => {
+      datasusState.singleTimeKey = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-range-start')?.addEventListener('change', event => {
+      datasusState.rangeStart = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-range-end')?.addEventListener('change', event => {
+      datasusState.rangeEnd = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+
+    datasusRefs.selectionEl.querySelector('#t-datasus-block')?.addEventListener('change', event => {
+      datasusState.blockKey = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusResults();
+    });
+  }
