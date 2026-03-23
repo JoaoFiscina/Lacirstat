@@ -539,9 +539,19 @@ input[type="file"] {
   gap: 10px;
   align-content: end;
 }
+.tstudent-module .btn:disabled,
+.tstudent-module .btn.is-disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
 .tstudent-module .tstudent-compact-value {
   font-size: 1.08rem;
   line-height: 1.35;
+}
+.tstudent-module .tstudent-status-grid .metric-card {
+  box-shadow: var(--shadow-soft);
 }
 .tstudent-module .tstudent-config-summary {
   display: flex;
@@ -574,6 +584,38 @@ input[type="file"] {
 .tstudent-module .tstudent-toggle input {
   width: 18px;
   height: 18px;
+}
+.tstudent-module .tstudent-advanced-note {
+  margin-top: 12px;
+}
+.tstudent-module .tstudent-assignment-wrap {
+  margin-top: 16px;
+}
+.tstudent-module .tstudent-assignment-table th,
+.tstudent-module .tstudent-assignment-table td {
+  vertical-align: middle;
+}
+.tstudent-module .tstudent-assignment-table th:nth-child(n + 2),
+.tstudent-module .tstudent-assignment-table td:nth-child(n + 2) {
+  text-align: center;
+}
+.tstudent-module .tstudent-assignment-table th:first-child,
+.tstudent-module .tstudent-assignment-table td:first-child {
+  text-align: left;
+}
+.tstudent-module .tstudent-radio-cell input {
+  width: 18px;
+  height: 18px;
+}
+.tstudent-module .tstudent-total-option {
+  background: rgba(180, 83, 9, 0.05);
+}
+.tstudent-module .tstudent-inline-list {
+  margin: 10px 0 0 18px;
+  padding: 0;
+}
+.tstudent-module .tstudent-inline-list li + li {
+  margin-top: 6px;
 }
 .tstudent-module .tstudent-group-picker {
   margin-top: 16px;
