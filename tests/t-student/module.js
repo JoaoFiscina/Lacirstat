@@ -1590,6 +1590,511 @@ export async function renderTestModule(ctx) {
     renderDatasusResultState('Campos DATASUS limpos. Importe um novo arquivo para continuar.', 'status');
   }
 
+  function refreshManualPreview() {
+    const parsed = parseDataset(manual.pasteEl.value, stats);
+
+    if (!parsed.previewRows.length) {
+      manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
+      manual.groupSummaryEl.innerHTML = '';
+      return parsed;
+    }
+
+    const previewHeaders = parsed.mode === 'categorical_numeric' ? ['Grupo', 'Valor'] : parsed.headers;
+    manual.previewEl.innerHTML = `
+      <div class="small-note">Formato detectado: <strong>${parsed.mode === 'categorical_numeric' ? 'Grupo + valor' : 'Duas colunas num\u00e9ricas'}</strong> \u00b7 Linhas v\u00e1lidas: ${parsed.validRows} \u00b7 Linhas ignoradas: ${parsed.ignoredRows}</div>
+      ${utils.renderPreviewTable(previewHeaders, parsed.previewRows, 8)}
+    `;
+    manual.groupSummaryEl.innerHTML = `
+      <div class="metric-card"><div class="metric-label">Grupo detectado 1</div><div class="metric-value">${utils.escapeHtml(parsed.groupNames[0] || 'Grupo 1')}</div><div class="metric-mini">n = ${parsed.g1.length}</div></div>
+      <div class="metric-card"><div class="metric-label">Grupo detectado 2</div><div class="metric-value">${utils.escapeHtml(parsed.groupNames[1] || 'Grupo 2')}</div><div class="metric-mini">n = ${parsed.g2.length}</div></div>
+      <div class="metric-card"><div class="metric-label">Dados v\u00e1lidos</div><div class="metric-value">${parsed.validRows}</div><div class="metric-mini">Total importado = ${parsed.rawRows}</div></div>
+    `;
+
+    return parsed;
+  }
+
+  function runManualAnalysis() {
+    const parsed = refreshManualPreview();
+    const alpha = Number(manual.alphaEl.value || 0.05);
+
+    if (parsed.g1.length < 2 || parsed.g2.length < 2) {
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Precisamos de pelo menos 2 valores v\u00e1lidos em cada grupo para rodar o teste t.');
+      return;
+    }
+
+    const result = safeWelch(parsed.g1, parsed.g2, stats);
+    if (!Number.isFinite(result.t) || !Number.isFinite(result.p)) {
+      renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'N\u00e3o foi poss\u00edvel calcular o teste com esses dados.');
+      return;
+    }
+
+    const labels = [parsed.groupNames[0] || 'Grupo 1', parsed.groupNames[1] || 'Grupo 2'];
+    const significant = result.p < alpha;
+
+    manual.statusEl.className = significant ? 'success-box' : 'status-bar';
+    manual.statusEl.textContent = significant
+      ? `Diferen\u00e7a estatisticamente significativa detectada (p ${utils.fmtP(result.p)} < ${alpha.toLocaleString('pt-BR')}).`
+      : `N\u00e3o houve evid\u00eancia estat\u00edstica suficiente de diferen\u00e7a entre as m\u00e9dias (p ${utils.fmtP(result.p)}).`;
+    manual.metricsEl.innerHTML = buildResultMetricsHtml(result, labels, utils);
+    manual.chartEl.innerHTML = buildResultChartsHtml(result, labels, parsed.g1, parsed.g2, stats, utils);
+    manual.resultsEl.innerHTML = buildManualInterpretation(result, alpha, labels, manual.contextEl.value || config.defaultQuestion || '', utils);
+  }
+
+  function clearManual() {
+    manual.pasteEl.value = '';
+    manual.contextEl.value = config.defaultQuestion || 'As m\u00e9dias dos grupos s\u00e3o diferentes?';
+    manual.alphaEl.value = '0.05';
+    manual.previewEl.innerHTML = '<div class="small-note">Nenhum dado carregado ainda.</div>';
+    manual.groupSummaryEl.innerHTML = '';
+    manual.statusEl.className = 'status-bar';
+    manual.statusEl.textContent = 'Campos limpos. Cole novos dados e rode novamente.';
+    manual.metricsEl.innerHTML = '';
+    manual.chartEl.innerHTML = '';
+    manual.resultsEl.innerHTML = '';
+  }
+
+  function invalidateDatasusRun() {
+    datasusState.result = null;
+    clearDatasusResultPanels();
+    datasusRefs.resultStatusEl.className = 'status-bar';
+    datasusRefs.resultStatusEl.textContent = datasusState.parsed
+      ? 'A base derivada foi atualizada. Revise os grupos e clique em "Rodar t test" quando estiver v\u00e1lida.'
+      : 'Aguardando importa\u00e7\u00e3o de arquivo.';
+    updateDatasusRunAvailability();
+  }
+
+  function renderDatasusImportStatus() {
+    if (datasusState.error) {
+      datasusRefs.statusCardEl.className = 'error-box';
+      datasusRefs.statusCardEl.innerHTML = datasusState.fileName
+        ? `<strong>${utils.escapeHtml(datasusState.fileName)}</strong><br>${utils.escapeHtml(datasusState.error)}`
+        : utils.escapeHtml(datasusState.error);
+      return;
+    }
+
+    if (!datasusState.parsed) {
+      datasusRefs.statusCardEl.className = 'status-bar';
+      datasusRefs.statusCardEl.textContent = 'Importe um arquivo DATASUS para habilitar a configura\u00e7\u00e3o da compara\u00e7\u00e3o.';
+      return;
+    }
+
+    const measureLabel = datasusState.parsed.measureLabel || 'N\u00e3o detectada';
+    const titleLabel = datasusState.parsed.titleLine || 'Sem linha-t\u00edtulo identificada';
+
+    datasusRefs.statusCardEl.className = 'info-banner';
+    datasusRefs.statusCardEl.innerHTML = `
+      <div class="metrics-grid tstudent-status-grid">
+        <div class="metric-card">
+          <div class="metric-label">Arquivo ativo</div>
+          <div class="metric-value tstudent-compact-value">${utils.escapeHtml(datasusState.fileName)}</div>
+          <div class="metric-mini">${datasusState.activeSource === 'upload' ? 'Arquivo enviado pelo usu\u00e1rio' : 'Exemplo carregado internamente'}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Separador</div>
+          <div class="metric-value">${utils.escapeHtml(labelFromDelimiter(datasusState.parsed.delimiter))}</div>
+          <div class="metric-mini">Dimens\u00e3o detectada: ${utils.escapeHtml(datasusState.parsed.dimensionLabel)}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Linhas detectadas</div>
+          <div class="metric-value">${datasusState.parsed.detectedRowCount}</div>
+          <div class="metric-mini">Linhas ignoradas com seguran\u00e7a: ${datasusState.parsed.ignoredRows}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Anos detectados</div>
+          <div class="metric-value">${datasusState.parsed.years.length}</div>
+          <div class="metric-mini">${utils.escapeHtml(datasusState.parsed.years[0])} a ${utils.escapeHtml(datasusState.parsed.years[datasusState.parsed.years.length - 1])}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Coluna Total</div>
+          <div class="metric-value">${datasusState.parsed.hasTotalColumn ? 'Sim' : 'N\u00e3o'}</div>
+          <div class="metric-mini">Linhas Total detectadas: ${datasusState.parsed.totalRows.length}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Medida / descri\u00e7\u00e3o</div>
+          <div class="metric-value tstudent-compact-value">${utils.escapeHtml(measureLabel)}</div>
+          <div class="metric-mini">${utils.escapeHtml(titleLabel)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDatasusPreview() {
+    if (datasusState.error) {
+      datasusRefs.previewEl.innerHTML = `<div class="error-box">${utils.escapeHtml(datasusState.error)}</div>`;
+      return;
+    }
+
+    if (!datasusState.parsed) {
+      datasusRefs.previewEl.innerHTML = '<div class="small-note">Nenhuma base importada ainda.</div>';
+      return;
+    }
+
+    const metadataNote = datasusState.parsed.metadataLines.length
+      ? `<div class="small-note" style="margin-bottom:12px;">Metadados detectados: ${utils.escapeHtml(datasusState.parsed.metadataLines.join(' | '))}</div>`
+      : '';
+
+    datasusRefs.previewEl.innerHTML = `
+      ${metadataNote}
+      <div class="small-note" style="margin-bottom:10px;">Cabe\u00e7alho identificado automaticamente na linha ${datasusState.parsed.headerRowIndex + 1}. A dimens\u00e3o principal detectada foi <strong>${utils.escapeHtml(datasusState.parsed.dimensionLabel)}</strong>.</div>
+      ${utils.renderPreviewTable(datasusState.parsed.previewHeaders, datasusState.parsed.previewRows, 10)}
+    `;
+  }
+
+  function renderDatasusControls() {
+    if (!datasusState.parsed) {
+      datasusRefs.controlsEl.innerHTML = '<div class="small-note">A configura\u00e7\u00e3o ficar\u00e1 dispon\u00edvel ap\u00f3s a leitura bem-sucedida do arquivo.</div>';
+      updateDatasusRunAvailability();
+      return;
+    }
+
+    const visibleRows = datasusState.parsed.parsedRows.filter(row => datasusState.showTotal || !row.isTotalRow);
+    const selectedA = visibleRows.filter(row => datasusState.selectionMap[row.id] === 'A').length;
+    const selectedB = visibleRows.filter(row => datasusState.selectionMap[row.id] === 'B').length;
+    const availableBlocks = datasusState.blocks.complete.length ? datasusState.blocks.complete : datasusState.blocks.all;
+    const incompleteNote = datasusState.blocks.incomplete.length
+      ? `<div class="small-note tstudent-advanced-note">Blocos incompletos detectados: ${utils.escapeHtml(datasusState.blocks.incomplete.map(block => block.label).join(', '))}.</div>`
+      : '';
+
+    datasusRefs.controlsEl.innerHTML = `
+      <div class="tstudent-config-summary">
+        <span class="small-chip info">Grupo A selecionado: ${selectedA}</span>
+        <span class="small-chip primary">Grupo B selecionado: ${selectedB}</span>
+        <span class="small-chip ${datasusState.showTotal ? 'warning' : 'info'}">Linha Total ${datasusState.showTotal ? 'vis\u00edvel' : 'oculta por padr\u00e3o'}</span>
+      </div>
+
+      <div class="small-note" style="margin-top:12px;">Cada categoria pode ficar em apenas um grupo por vez. Selecione <strong>Nenhum</strong>, <strong>Grupo A</strong> ou <strong>Grupo B</strong>.</div>
+
+      <div class="form-grid three" style="margin-top:16px;">
+        <div>
+          <label for="t-datasus-period-mode">Tipo de per\u00edodo</label>
+          <select id="t-datasus-period-mode">
+            <option value="all"${datasusState.periodMode === 'all' ? ' selected' : ''}>Todos os anos</option>
+            <option value="single"${datasusState.periodMode === 'single' ? ' selected' : ''}>Ano \u00fanico</option>
+            <option value="range"${datasusState.periodMode === 'range' ? ' selected' : ''}>Intervalo customizado</option>
+            <option value="block"${datasusState.periodMode === 'block' ? ' selected' : ''}>Blocos autom\u00e1ticos de 5 anos</option>
+          </select>
+        </div>
+        <div class="tstudent-period-field ${datasusState.periodMode === 'single' ? 'is-visible' : ''}">
+          <label for="t-datasus-single-year">Ano</label>
+          <select id="t-datasus-single-year">
+            ${datasusState.parsed.years.map(year => `<option value="${utils.escapeHtml(year)}"${year === datasusState.singleYear ? ' selected' : ''}>${utils.escapeHtml(year)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="tstudent-period-field ${datasusState.periodMode === 'block' ? 'is-visible' : ''}">
+          <label for="t-datasus-block">Bloco autom\u00e1tico</label>
+          <select id="t-datasus-block">
+            ${availableBlocks.length
+              ? availableBlocks.map(block => `<option value="${utils.escapeHtml(block.key)}"${block.key === datasusState.blockKey ? ' selected' : ''}>${utils.escapeHtml(block.label)}</option>`).join('')
+              : '<option value="">Nenhum bloco dispon\u00edvel</option>'}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-grid two tstudent-range-grid ${datasusState.periodMode === 'range' ? 'is-visible' : ''}">
+        <div>
+          <label for="t-datasus-range-start">Ano inicial</label>
+          <select id="t-datasus-range-start">
+            ${datasusState.parsed.years.map(year => `<option value="${utils.escapeHtml(year)}"${year === datasusState.rangeStart ? ' selected' : ''}>${utils.escapeHtml(year)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="t-datasus-range-end">Ano final</label>
+          <select id="t-datasus-range-end">
+            ${datasusState.parsed.years.map(year => `<option value="${utils.escapeHtml(year)}"${year === datasusState.rangeEnd ? ' selected' : ''}>${utils.escapeHtml(year)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      ${incompleteNote}
+
+      <label class="tstudent-toggle">
+        <input id="t-datasus-show-total" type="checkbox"${datasusState.showTotal ? ' checked' : ''} />
+        <span>Mostrar linha "Total" como op\u00e7\u00e3o avan\u00e7ada</span>
+      </label>
+
+      <div class="preview-table-wrap tstudent-assignment-wrap">
+        <table class="preview-table tstudent-assignment-table">
+          <thead>
+            <tr>
+              <th>${utils.escapeHtml(datasusState.parsed.dimensionLabel)}</th>
+              <th>Nenhum</th>
+              <th>Grupo A</th>
+              <th>Grupo B</th>
+              <th>Valores v\u00e1lidos</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${visibleRows.map(row => {
+              const selectedGroup = datasusState.selectionMap[row.id] || 'none';
+              const rawNote = row.cleanLabel !== row.rowLabel ? `<div class="small-note">Original: ${utils.escapeHtml(row.rowLabel)}</div>` : '';
+              return `
+                <tr class="${row.isTotalRow ? 'tstudent-total-option' : ''}">
+                  <td>
+                    <strong>${utils.escapeHtml(row.cleanLabel)}</strong>
+                    ${rawNote}
+                  </td>
+                  <td class="tstudent-radio-cell"><input type="radio" name="datasus-group-${utils.escapeHtml(row.id)}" value="none" data-role="datasus-group" data-row-id="${utils.escapeHtml(row.id)}"${selectedGroup === 'none' ? ' checked' : ''}></td>
+                  <td class="tstudent-radio-cell"><input type="radio" name="datasus-group-${utils.escapeHtml(row.id)}" value="A" data-role="datasus-group" data-row-id="${utils.escapeHtml(row.id)}"${selectedGroup === 'A' ? ' checked' : ''}></td>
+                  <td class="tstudent-radio-cell"><input type="radio" name="datasus-group-${utils.escapeHtml(row.id)}" value="B" data-role="datasus-group" data-row-id="${utils.escapeHtml(row.id)}"${selectedGroup === 'B' ? ' checked' : ''}></td>
+                  <td>${row.valueCount}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    const periodModeEl = datasusRefs.controlsEl.querySelector('#t-datasus-period-mode');
+    const singleYearEl = datasusRefs.controlsEl.querySelector('#t-datasus-single-year');
+    const rangeStartEl = datasusRefs.controlsEl.querySelector('#t-datasus-range-start');
+    const rangeEndEl = datasusRefs.controlsEl.querySelector('#t-datasus-range-end');
+    const blockEl = datasusRefs.controlsEl.querySelector('#t-datasus-block');
+    const showTotalEl = datasusRefs.controlsEl.querySelector('#t-datasus-show-total');
+
+    periodModeEl?.addEventListener('change', event => {
+      datasusState.periodMode = event.target.value;
+      renderDatasusControls();
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    singleYearEl?.addEventListener('change', event => {
+      datasusState.singleYear = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    rangeStartEl?.addEventListener('change', event => {
+      datasusState.rangeStart = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    rangeEndEl?.addEventListener('change', event => {
+      datasusState.rangeEnd = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    blockEl?.addEventListener('change', event => {
+      datasusState.blockKey = event.target.value;
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    showTotalEl?.addEventListener('change', event => {
+      datasusState.showTotal = event.target.checked;
+      renderDatasusControls();
+      renderDatasusDerived();
+      invalidateDatasusRun();
+    });
+
+    datasusRefs.controlsEl.querySelectorAll('input[data-role="datasus-group"]').forEach(input => {
+      input.addEventListener('change', event => {
+        const rowId = event.target.dataset.rowId;
+        const value = event.target.value;
+        datasusState.selectionMap[rowId] = value === 'none' ? null : value;
+        renderDatasusDerived();
+        invalidateDatasusRun();
+      });
+    });
+
+    updateDatasusRunAvailability();
+  }
+
+  function renderDatasusDerived() {
+    if (!datasusState.parsed) {
+      datasusState.derived = null;
+      datasusRefs.derivedEl.innerHTML = '<div class="small-note">Selecione grupos e per\u00edodo para montar a base derivada.</div>';
+      updateDatasusRunAvailability();
+      return;
+    }
+
+    const derived = deriveDatasusComparison(datasusState, stats);
+    datasusState.derived = derived;
+
+    const groupList = groupKey => {
+      const rows = derived.derivedRows.filter(row => row.groupKey === groupKey);
+      if (!rows.length) return '<div class="small-note">Nenhuma observa\u00e7\u00e3o v\u00e1lida neste grupo.</div>';
+      return `
+        <ul class="tstudent-derived-list">
+          ${rows.map(row => `
+            <li>
+              <span>
+                <strong>${utils.escapeHtml(row.rowLabel)}</strong>
+                <small>Anos usados: ${utils.escapeHtml(row.validYears.join(', '))}</small>
+              </span>
+              <strong>${utils.fmtNumber(row.value, 2)}</strong>
+            </li>
+          `).join('')}
+        </ul>
+      `;
+    };
+
+    const validationBox = derived.validationErrors.length
+      ? `
+        <div class="error-box" style="margin-bottom:14px;">
+          <strong>Base derivada ainda inv\u00e1lida.</strong>
+          <ul class="tstudent-inline-list">${derived.validationErrors.map(message => `<li>${utils.escapeHtml(message)}</li>`).join('')}</ul>
+        </div>
+      `
+      : '<div class="success-box" style="margin-bottom:14px;">Base derivada v\u00e1lida. Cada categoria permanece como uma observa\u00e7\u00e3o separada no grupo selecionado.</div>';
+
+    const tableRows = derived.derivedRows.map(row => [
+      row.rowLabel,
+      row.groupLabel,
+      utils.fmtNumber(row.value, 3),
+      row.validYears.join(', ')
+    ]);
+
+    const omittedHtml = derived.omittedRows.length
+      ? `<div class="small-note" style="margin-top:12px;">Categorias sem valores aproveit\u00e1veis no per\u00edodo atual: ${utils.escapeHtml(derived.omittedRows.map(item => item.rowLabel).join(', '))}.</div>`
+      : '';
+
+    datasusRefs.derivedEl.innerHTML = `
+      ${validationBox}
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Per\u00edodo selecionado</div>
+          <div class="metric-value tstudent-compact-value">${utils.escapeHtml(derived.periodLabel || 'sem per\u00edodo v\u00e1lido')}</div>
+          <div class="metric-mini">Anos usados: ${derived.selectedYears.length ? utils.escapeHtml(derived.selectedYears.join(', ')) : 'nenhum'}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Observa\u00e7\u00f5es v\u00e1lidas no Grupo A</div>
+          <div class="metric-value">${derived.validCounts.A}</div>
+          <div class="metric-mini">Linhas atribu\u00eddas: ${derived.selectionCounts.A}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Observa\u00e7\u00f5es v\u00e1lidas no Grupo B</div>
+          <div class="metric-value">${derived.validCounts.B}</div>
+          <div class="metric-mini">Linhas atribu\u00eddas: ${derived.selectionCounts.B}</div>
+        </div>
+      </div>
+
+      <div class="tstudent-derived-groups">
+        <article class="mini-card">
+          <h4>Grupo A</h4>
+          ${groupList('A')}
+        </article>
+        <article class="mini-card">
+          <h4>Grupo B</h4>
+          ${groupList('B')}
+        </article>
+      </div>
+
+      <div class="small-note" style="margin:14px 0 10px;">Resumo utilizado: m\u00e9dia dos anos selecionados dentro de cada categoria, sem colapsar o grupo inteiro em um \u00fanico n\u00famero.</div>
+      ${utils.renderPreviewTable([datasusState.parsed.dimensionLabel, 'Grupo', 'Valor resumido', 'Anos usados'], tableRows, 20)}
+      ${omittedHtml}
+    `;
+
+    updateDatasusRunAvailability();
+  }
+
+  function hydrateDatasusParsed(text, fileName, sourceKind = 'upload') {
+    resetDatasusImportedState();
+    datasusState.activeSource = sourceKind;
+    datasusState.fileName = fileName || '';
+    datasusState.sourceText = text || '';
+    if (sourceKind !== 'upload') {
+      datasusRefs.fileEl.value = '';
+    }
+
+    const parsed = parseDatasusDataset(text, stats);
+    if (!parsed.ok) {
+      datasusState.error = parsed.error || 'N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.';
+      renderDatasusImportStatus();
+      renderDatasusPreview();
+      renderDatasusControls();
+      renderDatasusDerived();
+      renderDatasusResultState(datasusState.error, 'error');
+      return;
+    }
+
+    datasusState.parsed = parsed;
+    datasusState.blocks = buildDatasusBlocks(parsed.years);
+    datasusState.selectionMap = Object.fromEntries(parsed.parsedRows.map(row => [row.id, null]));
+    datasusState.periodMode = 'all';
+    datasusState.singleYear = parsed.years[parsed.years.length - 1];
+    datasusState.rangeStart = parsed.years[0];
+    datasusState.rangeEnd = parsed.years[parsed.years.length - 1];
+    const defaultBlock = datasusState.blocks.complete[0] || datasusState.blocks.all[0] || null;
+    datasusState.blockKey = defaultBlock ? defaultBlock.key : '';
+
+    renderDatasusImportStatus();
+    renderDatasusPreview();
+    renderDatasusControls();
+    renderDatasusDerived();
+    invalidateDatasusRun();
+  }
+
+  async function handleDatasusFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    renderDatasusResultState('Lendo arquivo DATASUS selecionado...', 'status');
+    try {
+      const text = await utils.readFileText(file);
+      hydrateDatasusParsed(text, file.name, 'upload');
+    } catch {
+      resetDatasusImportedState();
+      datasusState.activeSource = 'upload';
+      datasusState.fileName = file.name;
+      datasusState.error = 'N\u00e3o foi poss\u00edvel ler o arquivo selecionado.';
+      renderDatasusImportStatus();
+      renderDatasusPreview();
+      renderDatasusControls();
+      renderDatasusDerived();
+      renderDatasusResultState(datasusState.error, 'error');
+    }
+  }
+
+  function runDatasusAnalysis() {
+    if (!datasusState.parsed) {
+      renderDatasusResultState('N\u00e3o foi poss\u00edvel interpretar o arquivo DATASUS enviado.', 'error');
+      return;
+    }
+
+    const derived = deriveDatasusComparison(datasusState, stats);
+    datasusState.derived = derived;
+    renderDatasusDerived();
+
+    if (!derived.ok) {
+      renderDatasusResultState(derived.primaryError || 'A base derivada ainda n\u00e3o est\u00e1 v\u00e1lida.', 'error');
+      return;
+    }
+
+    const result = safeWelch(derived.vectors.A, derived.vectors.B, stats);
+    if (!Number.isFinite(result.t) || !Number.isFinite(result.p)) {
+      renderDatasusResultState('N\u00e3o foi poss\u00edvel calcular o teste com os vetores derivados atuais.', 'error');
+      return;
+    }
+
+    datasusState.result = result;
+    const alpha = Number(datasusRefs.alphaEl.value || 0.05);
+    const significant = result.p < alpha;
+
+    datasusRefs.resultStatusEl.className = significant ? 'success-box' : 'status-bar';
+    datasusRefs.resultStatusEl.textContent = significant
+      ? `H\u00e1 evid\u00eancia estat\u00edstica de diferen\u00e7a entre Grupo A e Grupo B (p ${utils.fmtP(result.p)} < ${alpha.toLocaleString('pt-BR')}).`
+      : `N\u00e3o houve evid\u00eancia estat\u00edstica suficiente de diferen\u00e7a entre Grupo A e Grupo B (p ${utils.fmtP(result.p)}).`;
+    datasusRefs.metricsEl.innerHTML = buildResultMetricsHtml(result, ['Grupo A', 'Grupo B'], utils);
+    datasusRefs.chartEl.innerHTML = buildResultChartsHtml(result, ['Grupo A', 'Grupo B'], derived.vectors.A, derived.vectors.B, stats, utils);
+    datasusRefs.resultsEl.innerHTML = buildDatasusInterpretation(result, derived, alpha, datasusRefs.contextEl.value || config.defaultDatasusQuestion || '', utils);
+    updateDatasusRunAvailability();
+  }
+
+  function clearDatasusAll() {
+    resetDatasusImportedState();
+    datasusRefs.fileEl.value = '';
+    datasusRefs.contextEl.value = config.defaultDatasusQuestion || 'As m\u00e9dias resumidas diferem entre Grupo A e Grupo B?';
+    datasusRefs.alphaEl.value = '0.05';
+    renderDatasusImportStatus();
+    renderDatasusPreview();
+    renderDatasusControls();
+    renderDatasusDerived();
+    renderDatasusResultState('Campos DATASUS limpos. Importe um novo arquivo para continuar.', 'status');
+  }
+
   root.querySelectorAll('.tstudent-mode-btn').forEach(button => {
     button.addEventListener('click', () => {
       const target = button.dataset.modeTarget;

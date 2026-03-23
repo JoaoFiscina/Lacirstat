@@ -20,6 +20,11 @@ const utils = {
   showLoading(el, text = 'Carregando...') {
     el.innerHTML = `<div class="loading-chip">${this.escapeHtml(text)}</div>`;
   },
+  scoreDecodedText(text) {
+    const bad = (String(text || '').match(/�|Ã.|Â.|â[\u0080-\u00bf]?/g) || []).length;
+    const good = (String(text || '').match(/[\u00c0-\u017f]/g) || []).length;
+    return good - (bad * 4);
+  },
   fmtNumber(value, digits = 3) {
     return Number(value).toLocaleString('pt-BR', { maximumFractionDigits: digits, minimumFractionDigits: digits });
   },
@@ -45,7 +50,14 @@ const utils = {
     URL.revokeObjectURL(url);
   },
   async readFileText(file) {
-    return await file.text();
+    const buffer = await file.arrayBuffer();
+    const utf8Text = new TextDecoder('utf-8').decode(buffer);
+    try {
+      const fallbackText = new TextDecoder('windows-1252').decode(buffer);
+      return this.scoreDecodedText(fallbackText) > (this.scoreDecodedText(utf8Text) + 1) ? fallbackText : utf8Text;
+    } catch {
+      return utf8Text;
+    }
   },
   renderPreviewTable(headers, rows, limit = 12) {
     const safeHeaders = headers.map((h, i) => this.escapeHtml(h || `Coluna ${i + 1}`));
@@ -104,6 +116,25 @@ const utils = {
       </div>
     `;
   }
+};
+
+utils.scoreDecodedText = function scoreDecodedText(text) {
+  const source = String(text || '');
+  const bad = (source.match(/\uFFFD|\u00C3.|[\u00E2][\u0080-\u00BF]?/g) || []).length;
+  const good = (source.match(/[\u00c0-\u017f]/g) || []).length;
+  return good - (bad * 4);
+};
+
+utils.fmtP = function fmtP(value) {
+  if (!Number.isFinite(value)) return '\u2014';
+  if (value < 0.001) return '< 0,001';
+  return value.toLocaleString('pt-BR', { maximumFractionDigits: 4, minimumFractionDigits: 4 });
+};
+
+utils.fmtSigned = function fmtSigned(value, digits = 3) {
+  if (!Number.isFinite(value)) return '\u2014';
+  const sign = value > 0 ? '+' : '';
+  return sign + Number(value).toLocaleString('pt-BR', { maximumFractionDigits: digits, minimumFractionDigits: digits });
 };
 
 const Stats = {
@@ -393,6 +424,105 @@ async function bootstrap() {
     console.error(error);
     utils.showError(navEl, error.message || 'Não foi possível carregar os testes.');
     utils.showError(moduleRoot, 'Falha ao inicializar a aplicação.');
+  }
+}
+
+const originalPraisWinsten = Stats.praisWinsten.bind(Stats);
+Stats.praisWinsten = function praisWinstenPatched(years, values) {
+  const result = originalPraisWinsten(years, values);
+  if (result && typeof result.classification === 'string') {
+    result.classification = result.classification.replace('estacionÃ¡ria', 'estacionária');
+  }
+  return result;
+};
+
+function setHeader(title, subtitle, note = '') {
+  pageTitle.textContent = title || 'Teste';
+  pageSubtitle.textContent = subtitle || '';
+  heroNote.textContent = note || 'A plataforma foi estruturada para receber novos testes por módulos independentes.';
+}
+
+async function loadTest(testItem, manifest) {
+  try {
+    setActiveNav(testItem.id);
+    moduleRoot.innerHTML = `<div class="info-banner">Carregando <strong>${utils.escapeHtml(testItem.title)}</strong>...</div>`;
+    const basePath = normalizeBasePath(testItem.path);
+    const configUrl = new URL(`${basePath}config.json`, document.baseURI).href;
+    const moduleUrl = new URL(`${basePath}module.js`, document.baseURI).href;
+    const config = await fetchJson(configUrl);
+    const module = await import(moduleUrl);
+    setHeader(config.title || testItem.title, config.subtitle || testItem.subtitle || '', config.note || 'Preencha os dados da sua planilha, rode o teste e interprete a saída com base no contexto do estudo.');
+    if (!module || typeof module.renderTestModule !== 'function') {
+      throw new Error(`O módulo ${testItem.id} não exporta renderTestModule(ctx).`);
+    }
+    utils.clearElement(moduleRoot);
+    await module.renderTestModule({ root: moduleRoot, config, manifest, currentTest: testItem, utils, stats: Stats });
+  } catch (error) {
+    console.error(error);
+    utils.showError(moduleRoot, error.message || 'Erro desconhecido ao carregar o teste.');
+  }
+}
+
+async function bootstrap() {
+  try {
+    utils.showLoading(navEl, 'Carregando testes...');
+    const manifest = await fetchJson(new URL('./tests-manifest.json', document.baseURI).href);
+    if (!Array.isArray(manifest) || !manifest.length) throw new Error('Nenhum teste encontrado no manifesto.');
+    renderNav(manifest);
+    await loadTest(manifest[0], manifest);
+  } catch (error) {
+    console.error(error);
+    utils.showError(navEl, error.message || 'Não foi possível carregar os testes.');
+    utils.showError(moduleRoot, 'Falha ao inicializar a aplicação.');
+  }
+}
+
+Stats.praisWinsten = ((originalPraisWinstenFn) => function praisWinstenSafe(years, values) {
+  const result = originalPraisWinstenFn(years, values);
+  if (result && typeof result.classification === 'string' && result.classification.startsWith('estacion')) {
+    result.classification = 'estacion\u00e1ria';
+  }
+  return result;
+})(Stats.praisWinsten.bind(Stats));
+
+function setHeader(title, subtitle, note = '') {
+  pageTitle.textContent = title || 'Teste';
+  pageSubtitle.textContent = subtitle || '';
+  heroNote.textContent = note || 'A plataforma foi estruturada para receber novos testes por m\u00f3dulos independentes.';
+}
+
+async function loadTest(testItem, manifest) {
+  try {
+    setActiveNav(testItem.id);
+    moduleRoot.innerHTML = `<div class="info-banner">Carregando <strong>${utils.escapeHtml(testItem.title)}</strong>...</div>`;
+    const basePath = normalizeBasePath(testItem.path);
+    const configUrl = new URL(`${basePath}config.json`, document.baseURI).href;
+    const moduleUrl = new URL(`${basePath}module.js`, document.baseURI).href;
+    const config = await fetchJson(configUrl);
+    const module = await import(moduleUrl);
+    setHeader(config.title || testItem.title, config.subtitle || testItem.subtitle || '', config.note || 'Preencha os dados da sua planilha, rode o teste e interprete a sa\u00edda com base no contexto do estudo.');
+    if (!module || typeof module.renderTestModule !== 'function') {
+      throw new Error(`O m\u00f3dulo ${testItem.id} n\u00e3o exporta renderTestModule(ctx).`);
+    }
+    utils.clearElement(moduleRoot);
+    await module.renderTestModule({ root: moduleRoot, config, manifest, currentTest: testItem, utils, stats: Stats });
+  } catch (error) {
+    console.error(error);
+    utils.showError(moduleRoot, error.message || 'Erro desconhecido ao carregar o teste.');
+  }
+}
+
+async function bootstrap() {
+  try {
+    utils.showLoading(navEl, 'Carregando testes...');
+    const manifest = await fetchJson(new URL('./tests-manifest.json', document.baseURI).href);
+    if (!Array.isArray(manifest) || !manifest.length) throw new Error('Nenhum teste encontrado no manifesto.');
+    renderNav(manifest);
+    await loadTest(manifest[0], manifest);
+  } catch (error) {
+    console.error(error);
+    utils.showError(navEl, error.message || 'N\u00e3o foi poss\u00edvel carregar os testes.');
+    utils.showError(moduleRoot, 'Falha ao inicializar a aplica\u00e7\u00e3o.');
   }
 }
 

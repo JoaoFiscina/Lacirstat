@@ -337,8 +337,9 @@ input[type="file"] {
   background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,251,255,0.98) 100%);
 }
 .metric-label { font-size: .88rem; color: var(--muted-2); margin-bottom: 6px; font-weight: 700; }
-.metric-value { font-size: 1.46rem; font-weight: 900; line-height: 1.1; }
+.metric-value { font-size: 1.46rem; font-weight: 900; line-height: 1.1; overflow-wrap: anywhere; }
 .metric-mini { margin-top: 6px; color: var(--muted); font-size: .92rem; line-height: 1.45; }
+.metric-note { margin-top: 8px; color: var(--muted); font-size: .9rem; line-height: 1.55; }
 .metric-bar {
   width: 100%;
   height: 8px;
@@ -492,17 +493,56 @@ input[type="file"] {
 .tstudent-module .didactic-card p { margin: 0; color: var(--muted); line-height: 1.58; }
 .tstudent-module .surface-card {
   border-color: rgba(206, 220, 238, 0.95);
+  padding: 22px;
+}
+.tstudent-module .metrics-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.tstudent-module .result-grid,
+.tstudent-module .chart-grid {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+.tstudent-module .tstudent-section-note {
+  margin: -2px 0 14px;
+  max-width: 880px;
 }
 .tstudent-module .t-group-summary .metric-value {
   font-size: 1.16rem;
   line-height: 1.2;
+}
+.tstudent-module .metric-card {
+  min-width: 0;
+  min-height: 170px;
+  display: grid;
+  align-content: start;
+}
+.tstudent-module .tstudent-statistics-section .metric-card {
+  min-height: 182px;
 }
 .tstudent-module .chart-card h4 {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+.tstudent-module .chart-wrap {
+  padding: 14px;
+  min-height: 320px;
+}
+.tstudent-module .scatter-svg,
+.tstudent-module .groupplot-svg {
+  min-width: 560px;
+}
+.tstudent-module .tstudent-chart-section .chart-card,
+.tstudent-module .tstudent-interpretation-section .result-card {
+  min-width: 0;
+}
 .tstudent-module .result-card strong { color: #1e293b; }
+.tstudent-module .tstudent-interpretation-section {
+  border-color: rgba(15, 118, 110, 0.18);
+  background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(249,252,255,0.98) 100%);
+}
 .tstudent-module .tstudent-mode-switch {
   display: inline-flex;
   flex-wrap: wrap;
@@ -553,6 +593,9 @@ input[type="file"] {
 .tstudent-module .tstudent-status-grid .metric-card {
   box-shadow: var(--shadow-soft);
 }
+.tstudent-module .tstudent-status-grid {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
 .tstudent-module .tstudent-config-summary {
   display: flex;
   flex-wrap: wrap;
@@ -594,6 +637,7 @@ input[type="file"] {
 .tstudent-module .tstudent-assignment-table th,
 .tstudent-module .tstudent-assignment-table td {
   vertical-align: middle;
+  white-space: normal;
 }
 .tstudent-module .tstudent-assignment-table th:nth-child(n + 2),
 .tstudent-module .tstudent-assignment-table td:nth-child(n + 2) {
@@ -680,6 +724,16 @@ input[type="file"] {
   border-radius: 14px;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
 }
+.tstudent-module .tstudent-derived-list span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.tstudent-module .tstudent-derived-list small {
+  color: var(--muted);
+  font-size: .84rem;
+  line-height: 1.45;
+}
 .tstudent-module .tstudent-derived-list strong {
   color: #1e293b;
 }
@@ -725,5 +779,10 @@ input[type="file"] {
 
   .tstudent-module .tstudent-derived-groups {
     grid-template-columns: 1fr;
+  }
+
+  .tstudent-module .scatter-svg,
+  .tstudent-module .groupplot-svg {
+    min-width: 480px;
   }
 }
