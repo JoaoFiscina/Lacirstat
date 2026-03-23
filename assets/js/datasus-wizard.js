@@ -535,8 +535,8 @@ export function createDatasusWizard({
       state.statusMessage = failures.map(item => `${item.fileName}: ${item.error}`).join(' | ');
     }
 
-    const sources = loaded.filter(item => item.ok).map(item => ({
-      id: `datasus-source-${state.nextId + 1}`,
+    const sources = loaded.filter(item => item.ok).map((item, index) => ({
+      id: `datasus-source-${state.nextId + index + 1}`,
       fileName: item.fileName,
       rawText: item.rawText,
       sourceKind: item.sourceKind
@@ -562,7 +562,7 @@ export function createDatasusWizard({
     textSources.forEach(item => {
       const source = {
         id: `datasus-source-${state.nextId + 1}`,
-        fileName: item.fileName || `fonte-datasus-${state.nextId}.txt`,
+        fileName: item.fileName || `fonte-datasus-${state.nextId + 1}.txt`,
         rawText: item.text || '',
         sourceKind: item.sourceKind || 'example'
       };
