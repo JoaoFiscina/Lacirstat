@@ -1,10 +1,3 @@
-import { createDatasusWizard } from '../../assets/js/datasus-wizard.js';
-import {
-  derivePraisSeries,
-  getCategoryOptions,
-  getMetricOptions,
-  getPrimaryMetricKey
-} from '../../assets/js/datasus-normalizer.js';
 import {
   buildRecognizedColumnsChips,
   describeIgnoredRowReason,
@@ -21,19 +14,27 @@ const PRAIS_HEADER_ALIASES = {
   variavel_y: ['variavel_y', 'variável_y', 'variavel y', 'variável y', 'y', 'taxa', 'valor', 'desfecho'],
   observacao_opcional: ['observacao', 'observação', 'obs', 'comentario', 'comentário']
 };
+const PRAIS_FIELD_LABELS = {
+  id: 'ID',
+  tempo: 'Tempo',
+  variavel_y: 'Variavel Y',
+  observacao_opcional: 'Observacao opcional'
+};
 const PRAIS_RECOGNIZED_ORDER = [
-  { key: 'id', label: 'id' },
-  { key: 'tempo', label: 'tempo' },
-  { key: 'variavel_y', label: 'variavel_y' },
-  { key: 'observacao_opcional', label: 'observacao_opcional' }
+  { key: 'id', label: PRAIS_FIELD_LABELS.id },
+  { key: 'tempo', label: PRAIS_FIELD_LABELS.tempo },
+  { key: 'variavel_y', label: PRAIS_FIELD_LABELS.variavel_y },
+  { key: 'observacao_opcional', label: PRAIS_FIELD_LABELS.observacao_opcional }
 ];
 const PRAIS_POSITION_FALLBACK = {
   keysByIndex: ['id', 'tempo', 'variavel_y', 'observacao_opcional'],
   minColumns: 3,
   requiredKeys: ['tempo', 'variavel_y'],
-  introText: 'Nao reconhecemos os nomes padrao das colunas, entao usamos a estrutura por posicao da planilha.',
-  assumptionText: 'Assumimos: 1a coluna = identificacao, 2a = tempo, 3a = variavel y.',
-  headerText: 'Os nomes do cabecalho foram aproveitados automaticamente na interface.',
+  introText: 'Nao reconhecemos os nomes padrao das colunas. Usamos a estrutura da planilha por posicao: 1a coluna = ID, 2a = tempo, 3a = variavel Y.',
+  headerText: 'Os nomes reais do cabecalho foram mantidos na interface.',
+  failureMessage: 'Nao conseguimos identificar automaticamente as colunas nem usar a estrutura por posicao.',
+  minimumColumnsText: 'Esperavamos pelo menos 3 colunas uteis: ID, tempo e variavel Y.',
+  consistencyText: 'A primeira linha precisa funcionar como cabecalho, a 2a coluna deve representar tempo/ordem e a 3a coluna precisa conter valores numericos validos.',
   compatibilityValidators: {
     tempo: (raw, runtimeStats) => parseTemporalValue(raw, runtimeStats).numeric !== null
   }
@@ -46,10 +47,6 @@ const PRAIS_TABULAR_OPTIONS = {
   positionFallback: PRAIS_POSITION_FALLBACK
 };
 const MIN_TEMPORAL_POINTS = 5;
-
-function clonePlain(value) {
-  return value ? JSON.parse(JSON.stringify(value)) : value;
-}
 
 function buildExampleRows(config) {
   const rows = Array.isArray(config?.exampleRows) ? config.exampleRows : [];
@@ -91,6 +88,29 @@ function buildFeedbackBox(messages, toneClass, utils, title = '') {
       </ul>
     </div>
   `;
+}
+
+function formatDetectedColumnMessage(label, value, utils) {
+  return `${label}: ${utils.escapeHtml(value || 'Nao identificado')}`;
+}
+
+function buildDetectedColumnsCallout(dataset, utils) {
+  const details = [
+    formatDetectedColumnMessage('ID identificado', dataset.idHeaderLabel, utils),
+    formatDetectedColumnMessage('Tempo identificado', dataset.timeHeaderLabel, utils),
+    formatDetectedColumnMessage('Variavel Y identificada', dataset.yHeaderLabel, utils)
+  ];
+
+  if (dataset.usedPositionalFallback) {
+    return `
+      <div class="success-box">
+        <strong>Nao reconhecemos os nomes padrao das colunas. Usamos a estrutura da planilha por posicao: 1a coluna = ID, 2a = tempo, 3a = variavel Y.</strong>
+        <div class="small-note" style="margin-top:8px;">${details.join(' &middot; ')}</div>
+      </div>
+    `;
+  }
+
+  return `<div class="status-bar">${details.join(' &middot; ')}</div>`;
 }
 
 function parseTemporalValue(raw, stats) {
@@ -199,9 +219,14 @@ function buildEmptyPraisDataset(sourceKind = 'paste', sourceLabel = 'Dados colad
       y: 'variavel_y',
       observation: 'observacao_opcional'
     },
+    idHeaderLabel: 'id',
     timeHeaderLabel: 'tempo',
     yHeaderLabel: 'variavel_y',
+    observationHeaderLabel: 'observacao_opcional',
     recognizedColumns: {},
+    recognitionMode: 'none',
+    usedPositionalFallback: false,
+    recognitionDetails: [],
     uniqueIds: [],
     errors: [],
     warnings: [],
@@ -256,8 +281,13 @@ function buildPraisDatasetFromTabularState(fileState, stats, sourceMeta = {}) {
       y: recognizedColumns.variavel_y?.header || 'variavel_y',
       observation: recognizedColumns.observacao_opcional?.header || 'observacao_opcional'
     },
+    idHeaderLabel: recognizedColumns.id?.header || 'id',
     timeHeaderLabel: recognizedColumns.tempo?.header || 'tempo',
     yHeaderLabel: recognizedColumns.variavel_y?.header || 'variavel_y',
+    observationHeaderLabel: recognizedColumns.observacao_opcional?.header || 'observacao_opcional',
+    recognitionMode: fileState.recognitionMode || 'aliases',
+    usedPositionalFallback: Boolean(fileState.usedPositionalFallback),
+    recognitionDetails: Array.isArray(fileState.recognitionDetails) ? fileState.recognitionDetails : [],
     fileMeta: {
       fileName: fileState.fileName,
       tableName: fileState.tableName,
@@ -393,18 +423,18 @@ function buildPraisDatasetFromTabularState(fileState, stats, sourceMeta = {}) {
   if (fileState.decimalCommaDetected) {
     dataset.infos.push('Números com vírgula decimal foram convertidos automaticamente.');
   }
-  if (fileState.usedPositionalFallback) {
-    dataset.infos.push(...fileState.recognitionDetails);
+  if (dataset.usedPositionalFallback) {
+    dataset.infos.push(...dataset.recognitionDetails);
   }
 
   if (recognizedColumns.tempo) {
-    dataset.infos.push(`A coluna de tempo foi reconhecida como: ${recognizedColumns.tempo.header}.`);
+    dataset.infos.push(`Tempo identificado: ${recognizedColumns.tempo.header}.`);
   }
   if (recognizedColumns.variavel_y) {
-    dataset.infos.push(`A coluna de y foi reconhecida como: ${recognizedColumns.variavel_y.header}.`);
+    dataset.infos.push(`Variavel Y identificada: ${recognizedColumns.variavel_y.header}.`);
   }
   if (recognizedColumns.id) {
-    dataset.infos.push(`A coluna de ID foi reconhecida como: ${recognizedColumns.id.header}. O ID entra apenas como rótulo.`);
+    dataset.infos.push(`ID identificado: ${recognizedColumns.id.header}.`);
   } else {
     dataset.infos.push('Nenhuma coluna de ID foi reconhecida; a prévia usa a ordem das linhas como referência.');
   }
@@ -451,7 +481,7 @@ function buildPraisPreviewTable(dataset, utils, limit = 14) {
       <table class="preview-table prais-preview-table">
         <thead>
           <tr>
-            <th>${utils.escapeHtml(idHeader)}</th>
+            <th>${utils.escapeHtml(idHeader)} bruto</th>
             <th>${utils.escapeHtml(timeHeader)} bruto</th>
             <th>${utils.escapeHtml(yHeader)} bruto</th>
             <th>${utils.escapeHtml(timeHeader)} convertido</th>
@@ -497,7 +527,7 @@ function buildDerivedSeriesTable(dataset, utils, limit = 14) {
     <div class="small-note" style="margin-bottom:10px;">
       Série pronta para análise em ordem temporal${dataset.reordered ? ' (reordenada automaticamente)' : ''}.
     </div>
-    ${utils.renderPreviewTable(['ID', dataset.timeHeaderLabel, dataset.yHeaderLabel], rows, limit)}
+    ${utils.renderPreviewTable([dataset.idHeaderLabel, dataset.timeHeaderLabel, dataset.yHeaderLabel], rows, limit)}
   `;
 }
 
@@ -610,8 +640,10 @@ function buildInterpretation(model, dataset, context) {
     : model.classification === 'decrescente'
       ? 'os valores tenderam a diminuir ao longo do período'
       : 'não houve mudança consistente ao longo do período';
-  const idText = dataset.uniqueIds.length === 1 ? ` para ${dataset.uniqueIds[0]}` : '';
-  return `Analisou-se a tendência temporal de ${dataset.yHeaderLabel}${idText} em ${dataset.periodLabel || 'todo o período disponível'}, com ${dataset.validRows.length} pontos válidos. A série foi classificada como ${model.classification}, ${pText}; em termos práticos, ${directionText}. Contexto informado: ${context || 'tendência temporal do indicador'}.`;
+  const idText = dataset.uniqueIds.length === 1
+    ? ` para ${dataset.idHeaderLabel} = ${dataset.uniqueIds[0]}`
+    : '';
+  return `Analisou-se a tendência temporal de ${dataset.yHeaderLabel}${idText}, usando ${dataset.timeHeaderLabel} como eixo temporal, em ${dataset.periodLabel || 'todo o período disponível'}, com ${dataset.validRows.length} pontos válidos. A série foi classificada como ${model.classification}, ${pText}; em termos práticos, ${directionText}. Contexto informado: ${context || 'tendência temporal do indicador'}.`;
 }
 
 function buildResidualSummaryRows(orderedRows, fitted, residuals) {
@@ -624,7 +656,7 @@ function buildResidualSummaryRows(orderedRows, fitted, residuals) {
   }));
 }
 
-function buildResidualSummaryTable(rows, utils, limit = 6) {
+function buildResidualSummaryTable(rows, dataset, utils, limit = 6) {
   const ranked = [...rows]
     .sort((left, right) => Math.abs(right.residual) - Math.abs(left.residual))
     .slice(0, limit);
@@ -634,10 +666,10 @@ function buildResidualSummaryTable(rows, utils, limit = 6) {
       <table class="preview-table prais-preview-table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Tempo</th>
-            <th>Y observado</th>
-            <th>Y ajustado</th>
+            <th>${utils.escapeHtml(dataset.idHeaderLabel)}</th>
+            <th>${utils.escapeHtml(dataset.timeHeaderLabel)}</th>
+            <th>${utils.escapeHtml(dataset.yHeaderLabel)} observado</th>
+            <th>${utils.escapeHtml(dataset.yHeaderLabel)} ajustado</th>
             <th>Resíduo (log10)</th>
           </tr>
         </thead>
@@ -668,7 +700,7 @@ function metricCard(label, value, note = '') {
 }
 
 export async function renderTestModule(ctx) {
-  const { root, config, utils, stats, shared } = ctx;
+  const { root, config, utils, stats } = ctx;
   const exampleText = buildExampleText(config);
 
   root.classList.add('prais-module');
@@ -690,54 +722,26 @@ export async function renderTestModule(ctx) {
       </section>
 
       <section class="surface-card decorated">
-        <h4>Camada Universal DATASUS</h4>
-        <p class="small-note">Importe, revise e confirme a base DATASUS. Depois escolha a categoria e a medida para montar a série temporal final.</p>
-        <div id="pw-datasus-wizard" style="margin-top:14px;"></div>
+        <h4>1. Importar arquivo</h4>
+        <p class="small-note">Este é o único bloco de upload do módulo. Aceitamos CSV, TXT, TSV e XLSX; primeiro tentamos aliases e, se necessário, usamos fallback por posição com cabeçalho.</p>
+        <article class="mini-card prais-step-card" style="margin-top:16px;">
+          <div class="small-chip info">Importar arquivo</div>
+          <p>Formato recomendado: <strong>${utils.escapeHtml(PRAIS_FORMAT_LABEL)}</strong>. Exemplo de fallback aceito: <strong>UF;Ano;Internacoes</strong>.</p>
+          <input id="pw-file" type="file" accept=".csv,.txt,.tsv,.xlsx" hidden />
+          <div class="actions-row" style="margin-top:12px;">
+            <button id="pw-import" type="button" class="btn-secondary">Importar arquivo</button>
+            <button id="pw-example" type="button" class="btn-secondary">Usar exemplo</button>
+            <button id="pw-clear" type="button" class="btn-ghost">Limpar</button>
+          </div>
+          <div id="pw-file-status" class="prais-file-status" style="margin-top:14px;">Nenhum arquivo selecionado.</div>
+        </article>
       </section>
 
       <section class="surface-card">
-        <h4>Série derivada do DATASUS</h4>
-        <div id="pw-datasus-controls" class="small-note">Confirme uma base DATASUS para liberar a montagem assistida da série.</div>
-        <div id="pw-datasus-preview" style="margin-top:14px;"></div>
-      </section>
-
-      <section class="surface-card decorated">
-        <h4>Importar arquivo e colar dados</h4>
-        <p class="small-note">O módulo agora lê entrada por colunas no padrão de planilha. Use preferencialmente <strong>${utils.escapeHtml(PRAIS_FORMAT_LABEL)}</strong>, mas também aceitamos cabeçalhos equivalentes por alias.</p>
-        ${buildFormatPreview(config, utils)}
-        <div class="prais-intake-grid" style="margin-top:16px;">
-          <article class="mini-card prais-step-card">
-            <div class="small-chip info">1. Importar arquivo</div>
-            <p>CSV com ponto e vírgula, TXT, TSV e colagem do Excel são aceitos. O delimitador é detectado automaticamente, com prioridade para <code>;</code>.</p>
-            <input id="pw-file" type="file" accept=".csv,.txt,.tsv,.xlsx" hidden />
-            <div class="actions-row" style="margin-top:12px;">
-              <button id="pw-import" type="button" class="btn-secondary">Importar arquivo</button>
-              <button id="pw-example" type="button" class="btn-secondary">Usar exemplo</button>
-              <button id="pw-clear" type="button" class="btn-ghost">Limpar</button>
-            </div>
-            <div id="pw-file-status" class="prais-file-status" style="margin-top:14px;">Nenhum arquivo selecionado.</div>
-          </article>
-
-          <article class="mini-card prais-step-card">
-            <div class="small-chip info">2. Colar dados</div>
-            <label for="pw-paste" style="margin-top:10px;">Tabela por colunas</label>
-            <textarea id="pw-paste" spellcheck="false" placeholder="id;tempo;variavel_y;observacao_opcional&#10;Brasil;2015;123,4;&#10;Brasil;2016;130,2;"></textarea>
-          </article>
-        </div>
-        <div class="prais-review-grid" style="margin-top:16px;">
-          <div>
-            <label for="pw-context">Contexto da análise</label>
-            <input id="pw-context" type="text" value="Tendência temporal do indicador em dados agregados" />
-          </div>
-          <article class="mini-card prais-run-card">
-            <div class="small-chip primary">Rodar análise</div>
-            <p>Tempo é a variável independente. Variável y é o desfecho. ID entra apenas como rótulo.</p>
-            <div class="actions-row" style="margin-top:12px;">
-              <button id="pw-read" type="button" class="btn-secondary">Ler dados</button>
-              <button id="pw-run" type="button" class="btn">Rodar análise</button>
-            </div>
-          </article>
-        </div>
+        <h4>2. Colar dados</h4>
+        <p class="small-note">Cole a tabela com cabeçalho na primeira linha. Se os nomes não forem reconhecidos pelos aliases, usamos 1ª coluna = ID, 2ª = tempo e 3ª = variável Y quando a estrutura estiver consistente.</p>
+        <label for="pw-paste" style="margin-top:10px;">Tabela por colunas</label>
+        <textarea id="pw-paste" spellcheck="false" placeholder="id;tempo;variavel_y;observacao_opcional&#10;Brasil;2015;123,4;&#10;Brasil;2016;130,2;"></textarea>
       </section>
 
       <section class="surface-card">
@@ -748,8 +752,26 @@ export async function renderTestModule(ctx) {
         <div id="pw-preview-series" style="margin-top:14px;"></div>
       </section>
 
+      <section class="surface-card decorated">
+        <h4>4. Rodar análise</h4>
+        <div class="prais-review-grid" style="margin-top:16px;">
+          <div>
+            <label for="pw-context">Contexto da análise</label>
+            <input id="pw-context" type="text" value="Tendência temporal do indicador em dados agregados" />
+          </div>
+          <article class="mini-card prais-run-card">
+            <div class="small-chip primary">Rodar análise</div>
+            <p>Revise a leitura antes de seguir. O tempo entra como variável independente, a variável Y como desfecho e o ID permanece apenas como rótulo.</p>
+            <div class="actions-row" style="margin-top:12px;">
+              <button id="pw-read" type="button" class="btn-secondary">Ler dados</button>
+              <button id="pw-run" type="button" class="btn">Rodar análise</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="surface-card">
-        <h4>4. Resultado da análise</h4>
+        <h4>5. Resultado</h4>
         <div id="pw-error"></div>
         <div id="pw-status" class="status-bar">Carregue, leia e revise uma série temporal para iniciar a análise.</div>
         <div id="pw-metrics" class="metrics-grid" style="margin-top:14px;"></div>
@@ -779,83 +801,12 @@ export async function renderTestModule(ctx) {
     charts: root.querySelector('#pw-charts'),
     results: root.querySelector('#pw-results')
   };
-  const datasusWizardEl = root.querySelector('#pw-datasus-wizard');
-  const datasusControlsEl = root.querySelector('#pw-datasus-controls');
-  const datasusPreviewEl = root.querySelector('#pw-datasus-preview');
 
   const state = {
     dataset: buildEmptyPraisDataset(),
     fileState: null,
-    lastFileName: '',
-    activeSource: 'none',
-    session: null,
-    sharedSession: clonePlain(shared?.datasus?.lastSession || null),
-    sourceId: '',
-    metricBySource: {},
-    categoryKey: '',
-    derived: null
+    activeSource: 'none'
   };
-
-  function currentDatasusSession() {
-    if (state.session?.confirmedSources?.length) return state.session;
-    if (state.sharedSession?.confirmedSources?.length) return state.sharedSession;
-    return null;
-  }
-
-  function confirmedSources() {
-    return currentDatasusSession()?.confirmedSources || [];
-  }
-
-  function getSource(sourceId) {
-    return confirmedSources().find(source => source.id === sourceId) || null;
-  }
-
-  function ensureDatasusDefaults() {
-    const sources = confirmedSources();
-    if (!sources.length) {
-      state.derived = null;
-      state.sourceId = '';
-      state.categoryKey = '';
-      return;
-    }
-
-    if (!sources.some(source => source.id === state.sourceId)) {
-      state.sourceId = sources[0].id;
-    }
-
-    sources.forEach(source => {
-      if (!state.metricBySource[source.id]) {
-        state.metricBySource[source.id] = getPrimaryMetricKey(source);
-      }
-    });
-
-    const source = getSource(state.sourceId);
-    const categories = getCategoryOptions(source, true);
-    if (!categories.some(option => option.key === state.categoryKey)) {
-      state.categoryKey = categories[0]?.key || '';
-    }
-  }
-
-  function deriveDatasusSeries() {
-    ensureDatasusDefaults();
-    const source = getSource(state.sourceId);
-
-    if (!source) {
-      return {
-        ok: false,
-        primaryError: 'Confirme pelo menos uma base DATASUS para montar a série temporal.',
-        errors: ['Confirme pelo menos uma base DATASUS para montar a série temporal.'],
-        rows: []
-      };
-    }
-
-    return derivePraisSeries({
-      source,
-      metricKey: state.metricBySource[source.id],
-      categoryKey: state.categoryKey,
-      stats
-    });
-  }
 
   function clearOutput(statusMessage = 'Área limpa. Leia uma série temporal para iniciar a análise.') {
     els.error.innerHTML = '';
