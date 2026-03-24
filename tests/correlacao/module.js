@@ -1575,93 +1575,165 @@ export async function renderTestModule(ctx) {
     }
 
     function renderMethodSpecificAnalysisResult(result) {
-      const { dataset, pearson, spearman, outlierFlags, outlierLabels, rankSummary } = result;
+      const {
+        dataset,
+        pearson,
+        spearman,
+        outlierLabels,
+        rankSummary,
+        pearsonDiagnostics,
+        spearmanDiagnostics
+      } = result;
       const isSpearman = state.activeMethod === 'spearman';
-      const active = isSpearman ? spearman : pearson;
 
       els.error.innerHTML = '';
       els.status.className = 'success-box';
-      els.status.textContent = `Analise concluida com ${dataset.x.length} linhas validas. Metodo rodado em destaque: ${methodLabel(state.activeMethod)}.`;
 
       if (isSpearman) {
-        const tieTextX = rankSummary.xTies.groups
-          ? `${rankSummary.xTies.groups} grupo(s) de empate em ${dataset.headers[0]}`
-          : `sem empates em ${dataset.headers[0]}`;
-        const tieTextY = rankSummary.yTies.groups
-          ? `${rankSummary.yTies.groups} grupo(s) de empate em ${dataset.headers[1]}`
-          : `sem empates em ${dataset.headers[1]}`;
-        const interpretation = buildMethodInterpretation(dataset, pearson, spearman, outlierLabels, state.activeMethod, rankSummary, utils);
+        els.status.textContent = `Spearman rodado com ${dataset.x.length} pares validos: rho = ${utils.fmtSigned(spearman.coef, 3)} e p ${formatPValue(spearman.p, utils)}.`;
 
-        els.metrics.innerHTML = [
-          correlationMetricCard('n', String(dataset.x.length), 'Total de pares validos usados nos calculos.'),
-          correlationMetricCard('Metodo rodado', 'Spearman', 'Associacao monotona baseada em postos.', 'is-active'),
-          correlationMetricCard('rho de Spearman', utils.fmtSigned(spearman.coef, 3), `p = ${utils.fmtP(spearman.p)} | calculado sobre ranks medios.`),
-          correlationMetricCard('Direcao e forca', `${classifyDirection(active.coef)} | ${classifyStrength(active.coef)}`, 'Resumo monotono com base na ordenacao relativa.'),
-          correlationMetricCard('Empates em X', String(rankSummary.xTies.items), tieTextX),
-          correlationMetricCard('Empates em Y', String(rankSummary.yTies.items), tieTextY),
-          correlationMetricCard('Referencia linear', utils.fmtSigned(pearson.coef, 3), 'Pearson aparece apenas como comparacao auxiliar.')
-        ].join('');
+        const primaryCards = [
+          correlationMetricCard('Metodo principal', 'Spearman', 'Associacao monotona baseada em ranks.', 'is-active is-primary'),
+          correlationMetricCard('n valido', String(dataset.x.length), 'Pares usados no calculo de Spearman.', 'is-primary'),
+          correlationMetricCard('rho', utils.fmtSigned(spearman.coef, 3), `${classifyDirection(spearman.coef)} | ${classifyStrength(spearman.coef)}`, 'is-primary'),
+          correlationMetricCard('p-valor', formatPValue(spearman.p, utils), 'Teste sobre postos e ordenacao relativa.', 'is-primary')
+        ];
+        const secondaryCards = [
+          correlationMetricCard('IC95% de rho', formatCi(spearman.ci, utils), 'Intervalo aproximado via transformacao de Fisher nos ranks.', 'is-secondary'),
+          correlationMetricCard('Consistencia monotona', `${utils.fmtNumber(spearmanDiagnostics.monotonicConsistency * 100, 0)}%`, spearmanDiagnostics.monotonicLabel, spearmanDiagnostics.monotonicConsistency < 0.6 ? 'is-secondary is-warning' : 'is-secondary'),
+          correlationMetricCard('Empates tratados', String(rankSummary.xTies.groups + rankSummary.yTies.groups), `X: ${rankSummary.xTies.groups} grupo(s) | Y: ${rankSummary.yTies.groups} grupo(s).`, 'is-secondary'),
+          correlationMetricCard('Dif. media de ranks', utils.fmtNumber(spearmanDiagnostics.avgRankGap, 1), `Maior diferenca observada: ${utils.fmtNumber(spearmanDiagnostics.maxRankGap, 1)}.`, 'is-secondary'),
+          correlationMetricCard('Referencia Pearson', utils.fmtSigned(pearson.coef, 3), compareMessage(pearson, spearman), Math.abs(Math.abs(spearman.coef) - Math.abs(pearson.coef)) > 0.12 ? 'is-secondary is-warning' : 'is-secondary')
+        ];
 
-        els.interpretation.innerHTML = `
-          <p>${utils.escapeHtml(interpretation)}</p>
-          <ul>
-            <li>${utils.escapeHtml(compareMessage(pearson, spearman))}</li>
-            <li>Os postos foram calculados a partir de ${utils.escapeHtml(dataset.headers[0])} e ${utils.escapeHtml(dataset.headers[1])}, com media dos ranks em caso de empate.</li>
-          </ul>
-        `;
-
-        els.outlier.innerHTML = outlierLabels.length
-          ? `<div class="status-bar outlier-note"><strong>Leitura por postos:</strong> pontos extremos em valores brutos (${utils.escapeHtml(outlierLabels.slice(0, 6).join(', '))}${outlierLabels.length > 6 ? '...' : ''}) continuam visiveis na base, mas Spearman reduz seu peso ao usar ranks.</div>`
-          : '<div class="status-bar">Spearman foi calculado sobre postos. Sem outliers destacados nesta triagem inicial, a leitura monotona fica ainda mais direta.</div>';
+        els.metrics.innerHTML = buildMetricRows(primaryCards, secondaryCards);
+        els.interpretation.innerHTML = buildSpearmanInterpretationHtml(dataset, pearson, spearman, spearmanDiagnostics, rankSummary, utils);
+        els.outlier.innerHTML = buildInsightStrip([
+          {
+            label: 'Metodo principal',
+            text: 'Spearman mede monotonicidade pela ordenacao relativa, nao pela melhor reta.',
+            tone: 'info'
+          },
+          {
+            label: 'Comparacao com Pearson',
+            text: compareMessage(pearson, spearman),
+            tone: Math.abs(Math.abs(spearman.coef) - Math.abs(pearson.coef)) > 0.12 ? 'warning' : 'info'
+          },
+          {
+            label: 'Monotonicidade',
+            text: `${utils.fmtNumber(spearmanDiagnostics.monotonicConsistency * 100, 0)}% das transicoes ficaram alinhadas com a tendencia monotona esperada.`,
+            tone: spearmanDiagnostics.monotonicConsistency < 0.6 ? 'warning' : 'success'
+          },
+          {
+            label: 'Empates e ranks',
+            text: rankSummary.xTies.groups || rankSummary.yTies.groups
+              ? `Empates foram resolvidos por postos medios antes do calculo do coeficiente.`
+              : 'Sem empates relevantes; os postos ficaram bem definidos.',
+            tone: 'neutral'
+          }
+        ], utils);
 
         els.charts.innerHTML = `
           <article class="chart-card">
-            <h4>Postos de ${utils.escapeHtml(dataset.headers[0])} vs postos de ${utils.escapeHtml(dataset.headers[1])}</h4>
-            <div class="chart-wrap">${buildRankScatterSvg(dataset, rankSummary, utils)}</div>
-            <div class="small-note">O grafico de Spearman prioriza monotonicidade: quanto mais proximos da diagonal, mais coerente a ordenacao entre as variaveis.</div>
+            <div class="correlation-chart-head">
+              <div>
+                <h4>Grafico principal de Spearman</h4>
+                <p>Os pontos abaixo mostram os ranks de X e Y. A linha conectando a ordem de X ajuda a ver monotonicidade sem forcar uma reta linear.</p>
+              </div>
+            </div>
+            <div class="chart-wrap">${buildEnhancedRankScatterSvg(dataset, spearman, rankSummary, spearmanDiagnostics, utils)}</div>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot" style="background:#0f766e;"></span> ranks usuais</span>
+              <span class="legend-item"><span class="legend-dot" style="background:#2563eb;"></span> maiores diferencas de ranks</span>
+              <span class="legend-item"><span class="legend-line" style="background:rgba(37,99,235,0.35);"></span> caminho monotono por ordem de X</span>
+            </div>
           </article>
           <article class="chart-card">
-            <h4>Resumo dos ranks usados no calculo</h4>
-            ${buildRankComparisonTable(dataset, rankSummary, utils)}
-            <div class="small-note" style="margin-top:12px;">A tabela ajuda a revisar como a ordem relativa dos casos entrou no coeficiente de Spearman.</div>
+            <div class="correlation-chart-head">
+              <div>
+                <h4>Painel auxiliar de ranks</h4>
+                <p>Resumo dos casos com maior diferenca entre posto de X e posto de Y. Isso ajuda a entender onde a ordenacao relativa se afasta do padrao geral.</p>
+              </div>
+            </div>
+            ${buildRankComparisonTableEnhanced(dataset, spearmanDiagnostics, utils)}
+            <div class="small-note" style="margin-top:12px;">Quanto menor a diferenca entre os postos, mais coerente tende a ser a leitura monotona do Spearman.</div>
           </article>
         `;
         return;
       }
 
-      const interpretation = buildMethodInterpretation(dataset, pearson, spearman, outlierLabels, state.activeMethod, rankSummary, utils);
-      els.metrics.innerHTML = [
-        correlationMetricCard('n', String(dataset.x.length), 'Total de pares validos usados nos calculos.'),
-        correlationMetricCard('Metodo rodado', 'Pearson', 'Associacao linear entre valores numericos brutos.', 'is-active'),
-        correlationMetricCard('r de Pearson', utils.fmtSigned(pearson.coef, 3), `p = ${utils.fmtP(pearson.p)} | IC95% ${utils.fmtNumber(pearson.ci[0], 3)} a ${utils.fmtNumber(pearson.ci[1], 3)}`),
-        correlationMetricCard('R2 (Pearson)', utils.fmtNumber(pearson.r2, 3), 'Proporcao da variacao linear de Y explicada por X.'),
-        correlationMetricCard('Inclinacao linear', utils.fmtSigned(pearson.slope, 3), `${utils.escapeHtml(dataset.headers[1])} por 1 unidade em ${utils.escapeHtml(dataset.headers[0])}.`),
-        correlationMetricCard('Direcao e forca', `${classifyDirection(active.coef)} | ${classifyStrength(active.coef)}`, 'Resumo linear baseado no coeficiente de Pearson.'),
-        correlationMetricCard('Referencia monotona', utils.fmtSigned(spearman.coef, 3), 'Spearman aparece apenas como comparacao auxiliar.')
-      ].join('');
+      els.status.textContent = `Pearson rodado com ${dataset.x.length} pares validos: r = ${utils.fmtSigned(pearson.coef, 3)} e p ${formatPValue(pearson.p, utils)}.`;
 
-      els.interpretation.innerHTML = `
-        <p>${utils.escapeHtml(interpretation)}</p>
-        <ul>
-          <li>${utils.escapeHtml(compareMessage(pearson, spearman))}</li>
-          <li>Inclinacao linear estimada: ${utils.fmtSigned(pearson.slope, 3)} em ${utils.escapeHtml(dataset.headers[1])} para cada 1 unidade em ${utils.escapeHtml(dataset.headers[0])}.</li>
-        </ul>
-      `;
+      const primaryCards = [
+        correlationMetricCard('Metodo principal', 'Pearson', 'Associacao linear sobre valores brutos.', 'is-active is-primary'),
+        correlationMetricCard('n valido', String(dataset.x.length), 'Pares usados no ajuste da reta.', 'is-primary'),
+        correlationMetricCard('r de Pearson', utils.fmtSigned(pearson.coef, 3), `${classifyDirection(pearson.coef)} | ${classifyStrength(pearson.coef)}`, 'is-primary'),
+        correlationMetricCard('p-valor', formatPValue(pearson.p, utils), 'Teste de associacao linear.', 'is-primary')
+      ];
+      const secondaryCards = [
+        correlationMetricCard('IC95% de r', formatCi(pearson.ci, utils), 'Intervalo de confianca aproximado para o coeficiente.', 'is-secondary'),
+        correlationMetricCard('R2', utils.fmtNumber(pearson.r2, 3), 'Proporcao da variacao linear explicada por X.', 'is-secondary'),
+        correlationMetricCard('Inclinacao', utils.fmtSigned(pearson.slope, 3), `${utils.escapeHtml(dataset.headers[1])} por unidade de ${utils.escapeHtml(dataset.headers[0])}.`, 'is-secondary'),
+        correlationMetricCard('Intercepto', utils.fmtNumber(pearson.intercept, 3), `Valor esperado de ${utils.escapeHtml(dataset.headers[1])} quando ${utils.escapeHtml(dataset.headers[0])} = 0.`, 'is-secondary'),
+        correlationMetricCard('Adequacao linear', pearsonDiagnostics.adequacyTone === 'warning' ? 'Cautela alta' : pearsonDiagnostics.adequacyTone === 'caution' ? 'Com ressalvas' : 'Boa', pearsonDiagnostics.adequacyLabel, pearsonDiagnostics.adequacyTone !== 'good' ? 'is-secondary is-warning' : 'is-secondary'),
+        correlationMetricCard('Desvio medio', utils.fmtNumber(pearsonDiagnostics.mae, 2), `RMSE = ${utils.fmtNumber(pearsonDiagnostics.rmse, 2)} | influencia destacada em ${pearsonDiagnostics.influenceCount} ponto(s).`, 'is-secondary'),
+        correlationMetricCard('Referencia Spearman', utils.fmtSigned(spearman.coef, 3), compareMessage(pearson, spearman), Math.abs(Math.abs(spearman.coef) - Math.abs(pearson.coef)) > 0.12 ? 'is-secondary is-warning' : 'is-secondary')
+      ];
 
-      els.outlier.innerHTML = outlierLabels.length
-        ? `<div class="status-bar outlier-note"><strong>Atencao a possiveis outliers:</strong> ${utils.escapeHtml(outlierLabels.slice(0, 6).join(', '))}${outlierLabels.length > 6 ? '...' : ''}. Pearson tende a ser mais sensivel a pontos extremos que Spearman.</div>`
-        : '<div class="status-bar">Nenhum ponto se destacou fortemente como outlier pelo criterio de IQR nesta leitura inicial.</div>';
+      els.metrics.innerHTML = buildMetricRows(primaryCards, secondaryCards);
+      els.interpretation.innerHTML = buildPearsonInterpretationHtml(dataset, pearson, spearman, pearsonDiagnostics, outlierLabels, utils);
+      els.outlier.innerHTML = buildInsightStrip([
+        {
+          label: 'Adequacao da reta',
+          text: pearsonDiagnostics.adequacyLabel,
+          tone: pearsonDiagnostics.adequacyTone === 'good' ? 'success' : 'warning'
+        },
+        {
+          label: 'Curvatura',
+          text: pearsonDiagnostics.curvatureGain > 0.06
+            ? `O ajuste quadratico ganhou ${utils.fmtNumber(pearsonDiagnostics.curvatureGain, 3)} em R2 sobre a reta linear.`
+            : 'Nao apareceu ganho relevante de curvatura sobre a reta linear.',
+          tone: pearsonDiagnostics.curvatureGain > 0.06 ? 'warning' : 'neutral'
+        },
+        {
+          label: 'Pontos influentes',
+          text: outlierLabels.length
+            ? `${outlierLabels.slice(0, 4).join(', ')}${outlierLabels.length > 4 ? ', ...' : ''} merecem revisao por distancia da reta ou perfil extremo.`
+            : 'Nao houve outliers fortes na triagem inicial; o painel auxiliar mostra os maiores residuos.',
+          tone: outlierLabels.length ? 'warning' : 'info'
+        },
+        {
+          label: 'Comparacao com Spearman',
+          text: compareMessage(pearson, spearman),
+          tone: Math.abs(Math.abs(spearman.coef) - Math.abs(pearson.coef)) > 0.12 ? 'warning' : 'info'
+        }
+      ], utils);
 
       els.charts.innerHTML = `
         <article class="chart-card">
-          <h4>Dispersao com reta de tendencia</h4>
-          <div class="chart-wrap">${buildScatterSvg(dataset, pearson, outlierFlags, utils)}</div>
-          <div class="small-note">O grafico de Pearson foca relacao linear entre ${utils.escapeHtml(dataset.headers[0])} e ${utils.escapeHtml(dataset.headers[1])}.</div>
+          <div class="correlation-chart-head">
+            <div>
+              <h4>Grafico principal de Pearson</h4>
+              <p>Dispersao original com reta de tendencia, equacao ajustada e destaque visual para os pontos mais distantes da reta.</p>
+            </div>
+          </div>
+          <div class="chart-wrap">${buildEnhancedScatterSvg(dataset, pearson, pearsonDiagnostics, utils)}</div>
+          <div class="chart-legend">
+            <span class="legend-item"><span class="legend-dot" style="background:#2563eb;"></span> pontos usuais</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#d97706;"></span> possiveis outliers</span>
+            <span class="legend-item"><span class="legend-line" style="background:#0f766e;"></span> reta linear ajustada</span>
+            <span class="legend-item"><span class="legend-line" style="background:rgba(180,83,9,0.65);"></span> maiores residuos</span>
+          </div>
         </article>
         <article class="chart-card">
-          <h4>Pontos com maior distanciamento da reta</h4>
-          ${buildInfluenceTable(dataset, pearson, outlierFlags, utils)}
-          <div class="small-note" style="margin-top:12px;">Esta revisao destaca os casos mais influentes para a reta linear estimada.</div>
+          <div class="correlation-chart-head">
+            <div>
+              <h4>Painel auxiliar de residuos</h4>
+              <p>Casos com maior distancia em relacao a reta ajustada. Este painel substitui redundancias e concentra a revisao dos pontos influentes.</p>
+            </div>
+          </div>
+          ${buildResidualTableEnhanced(dataset, pearsonDiagnostics, utils)}
+          <div class="small-note" style="margin-top:12px;">Residuo alto nao invalida automaticamente a analise, mas sinaliza casos que merecem leitura clinica e grafica mais cuidadosa.</div>
         </article>
       `;
     }
@@ -1705,6 +1777,8 @@ export async function renderTestModule(ctx) {
         outlierLabels,
         rankSummary: buildRankSummary(dataset, stats)
       };
+      result.pearsonDiagnostics = buildPearsonDiagnostics(dataset, pearson, spearman, outlierFlags);
+      result.spearmanDiagnostics = buildSpearmanDiagnostics(dataset, pearson, spearman, result.rankSummary);
       state.lastResult = result;
       renderMethodSpecificAnalysisResult(result);
     }
