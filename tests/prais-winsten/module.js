@@ -95,6 +95,13 @@ function formatDetectedColumnMessage(label, value, utils) {
 }
 
 function buildDetectedColumnsCallout(dataset, utils) {
+  const hasDetectedColumns = Boolean(
+    dataset.recognizedColumns?.id
+    || dataset.recognizedColumns?.tempo
+    || dataset.recognizedColumns?.variavel_y
+  );
+  if (!hasDetectedColumns && !dataset.usedPositionalFallback) return '';
+
   const details = [
     formatDetectedColumnMessage('ID identificado', dataset.idHeaderLabel, utils),
     formatDetectedColumnMessage('Tempo identificado', dataset.timeHeaderLabel, utils),
@@ -214,15 +221,15 @@ function buildEmptyPraisDataset(sourceKind = 'paste', sourceLabel = 'Dados colad
     time: [],
     values: [],
     previewHeaders: {
-      id: 'id',
-      tempo: 'tempo',
-      y: 'variavel_y',
-      observation: 'observacao_opcional'
+      id: PRAIS_FIELD_LABELS.id,
+      tempo: PRAIS_FIELD_LABELS.tempo,
+      y: PRAIS_FIELD_LABELS.variavel_y,
+      observation: PRAIS_FIELD_LABELS.observacao_opcional
     },
-    idHeaderLabel: 'id',
-    timeHeaderLabel: 'tempo',
-    yHeaderLabel: 'variavel_y',
-    observationHeaderLabel: 'observacao_opcional',
+    idHeaderLabel: PRAIS_FIELD_LABELS.id,
+    timeHeaderLabel: PRAIS_FIELD_LABELS.tempo,
+    yHeaderLabel: PRAIS_FIELD_LABELS.variavel_y,
+    observationHeaderLabel: PRAIS_FIELD_LABELS.observacao_opcional,
     recognizedColumns: {},
     recognitionMode: 'none',
     usedPositionalFallback: false,
@@ -276,15 +283,15 @@ function buildPraisDatasetFromTabularState(fileState, stats, sourceMeta = {}) {
     hasContent,
     recognizedColumns,
     previewHeaders: {
-      id: recognizedColumns.id?.header || 'id',
-      tempo: recognizedColumns.tempo?.header || 'tempo',
-      y: recognizedColumns.variavel_y?.header || 'variavel_y',
-      observation: recognizedColumns.observacao_opcional?.header || 'observacao_opcional'
+      id: recognizedColumns.id?.header || PRAIS_FIELD_LABELS.id,
+      tempo: recognizedColumns.tempo?.header || PRAIS_FIELD_LABELS.tempo,
+      y: recognizedColumns.variavel_y?.header || PRAIS_FIELD_LABELS.variavel_y,
+      observation: recognizedColumns.observacao_opcional?.header || PRAIS_FIELD_LABELS.observacao_opcional
     },
-    idHeaderLabel: recognizedColumns.id?.header || 'id',
-    timeHeaderLabel: recognizedColumns.tempo?.header || 'tempo',
-    yHeaderLabel: recognizedColumns.variavel_y?.header || 'variavel_y',
-    observationHeaderLabel: recognizedColumns.observacao_opcional?.header || 'observacao_opcional',
+    idHeaderLabel: recognizedColumns.id?.header || PRAIS_FIELD_LABELS.id,
+    timeHeaderLabel: recognizedColumns.tempo?.header || PRAIS_FIELD_LABELS.tempo,
+    yHeaderLabel: recognizedColumns.variavel_y?.header || PRAIS_FIELD_LABELS.variavel_y,
+    observationHeaderLabel: recognizedColumns.observacao_opcional?.header || PRAIS_FIELD_LABELS.observacao_opcional,
     recognitionMode: fileState.recognitionMode || 'aliases',
     usedPositionalFallback: Boolean(fileState.usedPositionalFallback),
     recognitionDetails: Array.isArray(fileState.recognitionDetails) ? fileState.recognitionDetails : [],
@@ -852,9 +859,10 @@ export async function renderTestModule(ctx) {
     if (!dataset.hasContent) {
       els.previewMeta.innerHTML = `
         <article class="mini-card"><h4>Fonte</h4><p>Nenhum conteúdo lido</p></article>
-        <article class="mini-card"><h4>Tempo</h4><p>Aguardando leitura</p></article>
-        <article class="mini-card"><h4>Variável y</h4><p>Aguardando leitura</p></article>
-        <article class="mini-card"><h4>Pontos válidos</h4><p>0</p></article>
+        <article class="mini-card"><h4>ID identificado</h4><p>Aguardando leitura</p></article>
+        <article class="mini-card"><h4>Tempo identificado</h4><p>Aguardando leitura</p></article>
+        <article class="mini-card"><h4>Variável Y identificada</h4><p>Aguardando leitura</p></article>
+        <article class="mini-card"><h4>Linhas válidas</h4><p>0</p></article>
       `;
       els.previewMessages.innerHTML = buildFeedbackBox(
         dataset.errors.length ? dataset.errors : ['Cole dados, importe um arquivo ou use o exemplo para montar a prévia.'],
@@ -872,15 +880,17 @@ export async function renderTestModule(ctx) {
 
     els.previewMeta.innerHTML = `
       <article class="mini-card"><h4>Fonte</h4><p>${utils.escapeHtml(sourceText)}</p></article>
-      <article class="mini-card"><h4>Tempo reconhecido</h4><p>${utils.escapeHtml(dataset.timeHeaderLabel)}</p></article>
-      <article class="mini-card"><h4>Variável y reconhecida</h4><p>${utils.escapeHtml(dataset.yHeaderLabel)}</p></article>
-      <article class="mini-card"><h4>Pontos válidos</h4><p>${dataset.validCount}</p></article>
+      <article class="mini-card"><h4>ID identificado</h4><p>${utils.escapeHtml(dataset.idHeaderLabel || 'Nao identificado')}</p></article>
+      <article class="mini-card"><h4>Tempo identificado</h4><p>${utils.escapeHtml(dataset.timeHeaderLabel || 'Nao identificado')}</p></article>
+      <article class="mini-card"><h4>Variável Y identificada</h4><p>${utils.escapeHtml(dataset.yHeaderLabel || 'Nao identificado')}</p></article>
+      <article class="mini-card"><h4>Linhas válidas</h4><p>${dataset.validCount}</p></article>
       <article class="mini-card"><h4>Período</h4><p>${utils.escapeHtml(dataset.periodLabel || 'Ainda não definido')}</p></article>
-      <article class="mini-card"><h4>Ordenação</h4><p>${utils.escapeHtml(orderingText)}</p></article>
+      <article class="mini-card"><h4>Série ordenada</h4><p>${utils.escapeHtml(orderingText)}</p></article>
     `;
 
     els.previewMessages.innerHTML = [
       recognizedChips ? `<div class="prais-chip-row">${recognizedChips}</div>` : '',
+      buildDetectedColumnsCallout(dataset, utils),
       buildFeedbackBox(dataset.errors, 'error-box', utils, 'Validação'),
       buildFeedbackBox(dataset.warnings, 'status-bar', utils, 'Atenção'),
       buildFeedbackBox(dataset.infos, 'success-box', utils, 'Leitura')
@@ -963,7 +973,7 @@ export async function renderTestModule(ctx) {
         : 'autocorrelação forte';
 
     els.status.className = 'success-box';
-    els.status.textContent = `Análise concluída com ${model.n} pontos válidos. ${dataset.reordered ? 'A série foi ordenada crescentemente por tempo antes do ajuste.' : 'A ordem temporal original já estava adequada.'}`;
+    els.status.textContent = `Análise concluída para ${dataset.yHeaderLabel} com ${model.n} pontos válidos. ${dataset.reordered ? 'A série foi ordenada crescentemente por tempo antes do ajuste.' : 'A ordem temporal original já estava adequada.'}`;
 
     els.metrics.innerHTML = [
       metricCard('Pontos temporais', String(model.n), `Período analisado: ${dataset.periodLabel || 'não informado'}`),
@@ -977,7 +987,7 @@ export async function renderTestModule(ctx) {
 
     els.charts.innerHTML = `
       <article class="chart-card">
-        <h4>Série observada e linha ajustada</h4>
+        <h4>${utils.escapeHtml(dataset.yHeaderLabel)} observada e linha ajustada</h4>
         <div class="chart-wrap">${buildMainTrendSvg(dataset.time, dataset.values, fitted, pointLabels, { x: dataset.timeHeaderLabel, y: dataset.yHeaderLabel }, utils)}</div>
         <div class="chart-legend">
           <span class="legend-item"><span class="legend-line" style="background:#2563eb"></span>Observado</span>
@@ -985,7 +995,7 @@ export async function renderTestModule(ctx) {
         </div>
       </article>
       <article class="chart-card">
-        <h4>Gráfico 2 - resíduos ao longo do tempo</h4>
+        <h4>Gráfico 2 - resíduos de ${utils.escapeHtml(dataset.yHeaderLabel)} ao longo de ${utils.escapeHtml(dataset.timeHeaderLabel)}</h4>
         <div class="chart-wrap">${buildResidualSvg(dataset.time, residuals, pointLabels, { x: dataset.timeHeaderLabel, y: 'Resíduo (log10)' }, utils)}</div>
         <div class="small-note">Mantivemos o segundo gráfico como resíduos ao longo do tempo porque ele ajuda mais do que um gráfico decorativo: mostra se sobrou padrão temporal após o ajuste.</div>
       </article>
@@ -996,10 +1006,12 @@ export async function renderTestModule(ctx) {
         <h4>Interpretação automática</h4>
         <p>${utils.escapeHtml(buildInterpretation(model, dataset, els.context.value || ''))}</p>
         <ul>
+          <li>ID identificado: ${utils.escapeHtml(dataset.idHeaderLabel)}.</li>
           <li>Tempo entendido como variável independente: ${utils.escapeHtml(dataset.timeHeaderLabel)}.</li>
           <li>Desfecho analisado: ${utils.escapeHtml(dataset.yHeaderLabel)}.</li>
           <li>Resultado principal: APC ${utils.fmtSigned(model.apc, 2)}% (IC95% ${utils.fmtNumber(model.ciApc[0], 2)} a ${utils.fmtNumber(model.ciApc[1], 2)}), p = ${utils.fmtP(model.p)}.</li>
           <li>Autocorrelação estimada: ρ = ${utils.fmtSigned(model.rho, 3)} (${acText}).</li>
+          ${dataset.uniqueIds.length === 1 ? `<li>Série analisada: ${utils.escapeHtml(dataset.idHeaderLabel)} = ${utils.escapeHtml(dataset.uniqueIds[0])}.</li>` : ''}
         </ul>
       </article>
       <article class="result-card">
@@ -1010,7 +1022,7 @@ export async function renderTestModule(ctx) {
           <li>${largestResidual ? `Maior resíduo em ${largestResidual.timeLabel}: ${utils.fmtSigned(largestResidual.residual, 4)}.` : 'Sem resumo residual adicional.'}</li>
           <li>${dataset.reordered ? 'A série precisou ser ordenada crescentemente por tempo antes do ajuste.' : 'A série já estava ordenada crescentemente por tempo.'}</li>
         </ul>
-        ${buildResidualSummaryTable(residualRows, utils, 6)}
+        ${buildResidualSummaryTable(residualRows, dataset, utils, 6)}
       </article>
     `;
   }

@@ -329,14 +329,15 @@ function buildPositionalFallbackCandidate(table, rowIndex, headers, bodyRows, op
 function buildTabularRecognitionError(expectedFormatLabel, positionFallback, availableNames = [], sourceLabel = 'arquivo') {
   const minColumns = positionFallback?.minColumns || 3;
   const message = positionFallback
-    ? `O ${sourceLabel} foi lido, mas nao conseguimos identificar as colunas automaticamente nem pela posicao.`
+    ? (positionFallback.failureMessage || `O ${sourceLabel} foi lido, mas nao conseguimos identificar as colunas automaticamente nem pela posicao.`)
     : `O ${sourceLabel} foi lido, mas nao encontramos colunas compativeis com o modelo: ${expectedFormatLabel}.`;
 
   return {
     message,
     details: [
       `Use o modelo: ${expectedFormatLabel}.`,
-      positionFallback ? `Esperavamos pelo menos ${minColumns} colunas uteis com cabecalho na primeira linha.` : '',
+      positionFallback ? (positionFallback.minimumColumnsText || `Esperavamos pelo menos ${minColumns} colunas uteis com cabecalho na primeira linha.`) : '',
+      positionFallback?.consistencyText || '',
       availableNames.length ? `Abas/blocos lidos: ${availableNames.join(', ')}.` : ''
     ].filter(Boolean)
   };
