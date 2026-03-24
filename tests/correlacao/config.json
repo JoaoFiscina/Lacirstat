@@ -1,48 +1,36 @@
 {
-  "title": "Correlação de Pearson / Spearman",
-  "subtitle": "Análise didática da força e direção da associação entre duas variáveis",
-  "description": "Cole seus dados e compare Pearson e Spearman em uma leitura visual e estatística completa, com interpretação automática em português usando os nomes reais das variáveis detectadas.",
-  "note": "Aceita 2 colunas numéricas (X e Y) ou 3 colunas (identificador + X + Y), com delimitador tab, vírgula ou ponto e vírgula e cabeçalho opcional.",
+  "title": "Correlacao de Pearson / Spearman",
+  "subtitle": "Analise didatica da forca e direcao da associacao entre duas variaveis",
+  "description": "Modulo didatico com entrada por colunas, leitura de planilha no padrao brasileiro e comparacao transparente entre Pearson e Spearman.",
+  "note": "Formato recomendado: id;variavel_x;variavel_y;observacao_opcional. Aceita CSV com ponto e virgula, colagem tabulada do Excel e numeros com virgula decimal.",
   "didacticCards": [
     {
       "title": "O que este teste avalia",
-      "text": "Mede se duas variáveis quantitativas variam juntas, indicando direção (positiva/negativa) e magnitude da associação."
+      "text": "Mede se duas variaveis quantitativas variam juntas, indicando direcao e magnitude da associacao."
     },
     {
       "title": "Quando usar Pearson",
-      "text": "Quando a nuvem de pontos sugere relação aproximadamente linear e sem influência dominante de pontos extremos."
+      "text": "Quando a nuvem de pontos sugere relacao aproximadamente linear e sem influencia dominante de pontos extremos."
     },
     {
       "title": "Quando usar Spearman",
-      "text": "Quando há assimetria, possível não linearidade monotônica ou sensibilidade a outliers na análise linear."
+      "text": "Quando ha assimetria, possivel nao linearidade monotona ou sensibilidade a outliers na analise linear."
     },
     {
       "title": "O que olhar antes de interpretar",
-      "text": "Verifique o gráfico de dispersão, a presença de outliers, o tamanho amostral e se os dados fazem sentido no contexto clínico ou acadêmico."
+      "text": "Verifique a dispersao, o tamanho amostral, a consistencia metodologica e a presenca de pontos influentes."
     },
     {
       "title": "Erro comum",
-      "text": "Correlação não implica causalidade. Mesmo uma associação forte não prova que uma variável causa a outra."
+      "text": "Correlacao nao implica causalidade. Mesmo uma associacao forte nao prova que uma variavel causa a outra."
     }
   ],
   "examples": [
     {
-      "id": "positivo",
-      "label": "Exemplo positivo (tab)",
-      "description": "Cobertura de seguimento e adesão ao protocolo aumentando juntas.",
-      "text": "UF\tCobertura de seguimento (%)\tAdesão ao protocolo (%)\nBA\t58\t61\nSP\t81\t82\nMG\t73\t75\nPE\t49\t53\nRS\t88\t91\nGO\t67\t69\nCE\t55\t59\nPR\t79\t81"
-    },
-    {
-      "id": "negativo",
-      "label": "Exemplo negativo (ponto e vírgula)",
-      "description": "Maior atraso associado a menor alta oportuna.",
-      "text": "Hospital;Atraso médio para procedimento (dias);Alta em até 72h (%)\nA;2;91\nB;3;87\nC;5;80\nD;7;75\nE;9;66\nF;11;58\nG;13;49\nH;15;43"
-    },
-    {
-      "id": "outlier",
-      "label": "Exemplo com outlier (vírgula decimal)",
-      "description": "Mostra como um ponto extremo pode deslocar o Pearson em relação ao Spearman.",
-      "text": "UF;Taxa de seguimento;Mortalidade hospitalar\nBA;41;3,1\nSP;56;3,9\nMG;49;3,5\nPE;39;2,8\nRS;61;4,1\nGO;46;3,2\nAM;44;3,3\nXX;92;1,7"
+      "id": "padrao",
+      "label": "Exemplo no formato padrao",
+      "description": "Base simples no modelo oficial do modulo.",
+      "text": "id;variavel_x;variavel_y;observacao_opcional\nUF1;12,3;45,2;\nUF2;14,1;43,8;\nUF3;10,9;48,0;\nUF4;15,2;42,7;"
     }
   ]
 }

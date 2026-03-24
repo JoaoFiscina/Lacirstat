@@ -684,7 +684,7 @@ export async function renderTestModule(ctx) {
       </section>
 
       <section class="surface-card decorated">
-        <h4>1. Importar arquivo e 2. Colar dados</h4>
+        <h4>Importar arquivo e colar dados</h4>
         <p class="small-note">O módulo agora lê entrada por colunas no padrão de planilha. Use preferencialmente <strong>${utils.escapeHtml(PRAIS_FORMAT_LABEL)}</strong>, mas também aceitamos cabeçalhos equivalentes por alias.</p>
         ${buildFormatPreview(config, utils)}
         <div class="prais-intake-grid" style="margin-top:16px;">
@@ -712,7 +712,7 @@ export async function renderTestModule(ctx) {
             <input id="pw-context" type="text" value="Tendência temporal do indicador em dados agregados" />
           </div>
           <article class="mini-card prais-run-card">
-            <div class="small-chip primary">4. Rodar análise</div>
+            <div class="small-chip primary">Rodar análise</div>
             <p>Tempo é a variável independente. Variável y é o desfecho. ID entra apenas como rótulo.</p>
             <div class="actions-row" style="margin-top:12px;">
               <button id="pw-read" type="button" class="btn-secondary">Ler dados</button>
@@ -731,7 +731,7 @@ export async function renderTestModule(ctx) {
       </section>
 
       <section class="surface-card">
-        <h4>5. Resultado</h4>
+        <h4>4. Resultado da análise</h4>
         <div id="pw-error"></div>
         <div id="pw-status" class="status-bar">Carregue, leia e revise uma série temporal para iniciar a análise.</div>
         <div id="pw-metrics" class="metrics-grid" style="margin-top:14px;"></div>
@@ -1199,19 +1199,19 @@ export async function renderTestModule(ctx) {
     clearOutput();
   }
 
-  els.importButton.addEventListener('click', () => {
-    els.file.click();
+  els.importButton?.addEventListener('click', () => {
+    els.file?.click();
   });
 
-  els.exampleButton.addEventListener('click', loadExample);
-  els.clearButton.addEventListener('click', clearAll);
-  els.readButton.addEventListener('click', async () => {
+  els.exampleButton?.addEventListener('click', loadExample);
+  els.clearButton?.addEventListener('click', clearAll);
+  els.readButton?.addEventListener('click', async () => {
     await readCurrentInput();
     clearOutput('Prévia atualizada. Revise a série e clique em Rodar análise.');
   });
-  els.runButton.addEventListener('click', runAnalysis);
+  els.runButton?.addEventListener('click', runAnalysis);
 
-  els.file.addEventListener('change', async event => {
+  els.file?.addEventListener('change', async event => {
     const file = event.target.files?.[0];
     if (!file) return;
     els.paste.value = '';
@@ -1219,7 +1219,7 @@ export async function renderTestModule(ctx) {
     clearOutput('Arquivo carregado e lido. Revise a prévia e clique em Rodar análise.');
   });
 
-  els.paste.addEventListener('input', () => {
+  els.paste?.addEventListener('input', () => {
     if (els.paste.value.trim()) {
       state.activeSource = 'paste';
       els.fileStatus.innerHTML = '<div class="status-bar">Conteúdo alterado. Clique em Ler dados para atualizar a prévia.</div>';

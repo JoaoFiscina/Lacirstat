@@ -718,3 +718,523 @@ export async function renderTestModule(ctx) {
       labelMode: 'category-time',
       derived: null
     };
+
+    function setIntakeStatus(kind, message) {
+      els.intakeStatus.className = toneClass(kind);
+      els.intakeStatus.textContent = message;
+    }
+
+    function resetResultVisuals(statusMessage = 'Leia ou importe uma base para continuar.') {
+      els.error.innerHTML = '';
+      els.status.className = 'status-bar';
+      els.status.textContent = statusMessage;
+      els.metrics.innerHTML = '';
+      els.interpretation.innerHTML = '<p class="muted">A interpretacao aparecera aqui apos rodar a analise.</p>';
+      els.outlier.innerHTML = '';
+      els.charts.innerHTML = '';
+    }
+
+    function renderPreview() {
+      const dataset = state.dataset;
+      const recognized = buildRecognizedColumnsChips(dataset.recognizedColumns, CORRELATION_RECOGNIZED_ORDER);
+
+      if (!dataset.hasContent && !dataset.errors.length) {
+        els.previewMeta.innerHTML = '<div class="small-note">Nenhum dado lido ainda.</div>';
+        els.previewTable.innerHTML = '';
+        return;
+      }
+
+      els.previewMeta.innerHTML = `
+        <div class="tabular-preview-grid">
+          <article class="mini-card">
+            <h4>Colunas reconhecidas</h4>
+            <div class="tabular-chip-row">${recognized || '<span class="small-note">Nenhuma coluna reconhecida.</span>'}</div>
+          </article>
+          <article class="mini-card">
+            <h4>Linhas validas</h4>
+            <p>${dataset.x.length}</p>
+          </article>
+          <article class="mini-card">
+            <h4>Linhas ignoradas</h4>
+            <p>${dataset.ignoredRows.length}</p>
+          </article>
+        </div>
+        ${buildFeedbackBox(dataset.infos, 'status-bar', utils, 'Leitura')}
+        ${buildFeedbackBox(dataset.warnings, 'status-bar outlier-note', utils, 'Linhas ignoradas')}
+        ${buildFeedbackBox(dataset.errors, 'error-box', utils, 'Problemas encontrados')}
+      `;
+      els.previewTable.innerHTML = buildCorrelationPreviewTable(dataset, utils);
+    }
+
+    function applyDataset(dataset, statusMessage, statusKind = 'status') {
+      state.dataset = dataset;
+      state.lastResult = null;
+      renderPreview();
+      resetResultVisuals();
+      setIntakeStatus(statusKind, statusMessage);
+    }
+
+    async function readSelectedFile(file) {
+      if (!file) return;
+      els.fileName.textContent = file.name || 'Arquivo selecionado';
+      setIntakeStatus('status', 'Lendo arquivo...');
+      const fileState = await readTabularFileState(file, utils, stats, {
+        aliases: CORRELATION_HEADER_ALIASES,
+        requiredKeys: ['variavel_x', 'variavel_y'],
+        numericKeys: ['variavel_x', 'variavel_y'],
+        expectedFormatLabel: CORRELATION_FORMAT_LABEL
+      });
+      const dataset = buildCorrelationDatasetFromTabularState(fileState, stats, {
+        sourceKind: 'file',
+        sourceLabel: 'Arquivo importado'
+      });
+
+      applyDataset(
+        dataset,
+        fileState.status === 'loaded'
+          ? `Arquivo "${file.name}" lido com sucesso. Revise a previa antes de rodar a analise.`
+          : (fileState.message || 'Nao foi possivel ler o arquivo enviado.'),
+        fileState.status === 'loaded' ? 'success' : 'error'
+      );
+    }
+
+    function readPastedData(statusMessage = 'Dados colados lidos. Revise a previa antes de rodar a analise.', statusKind = 'success') {
+      if (!normalizeTabularSpaces(els.paste.value)) {
+        state.dataset = buildEmptyCorrelationDataset();
+        renderPreview();
+        resetResultVisuals();
+        setIntakeStatus('status', 'Cole uma tabela com cabecalho para ler os dados.');
+        return state.dataset;
+      }
+
+      const fileState = readTabularPasteState(els.paste.value, stats, {
+        aliases: CORRELATION_HEADER_ALIASES,
+        requiredKeys: ['variavel_x', 'variavel_y'],
+        numericKeys: ['variavel_x', 'variavel_y'],
+        expectedFormatLabel: CORRELATION_FORMAT_LABEL
+      });
+      const dataset = buildCorrelationDatasetFromTabularState(fileState, stats, {
+        sourceKind: 'paste',
+        sourceLabel: 'Dados colados'
+      });
+
+      applyDataset(
+        dataset,
+        fileState.status === 'loaded'
+          ? statusMessage
+          : (fileState.message || 'Nao foi possivel interpretar os dados colados.'),
+        fileState.status === 'loaded' ? statusKind : 'error'
+      );
+      return dataset;
+    }
+
+    function loadExample() {
+      els.paste.value = CORRELATION_EXAMPLE_TEXT;
+      els.file.value = '';
+      els.fileName.textContent = 'Nenhum arquivo selecionado.';
+      readPastedData('Exemplo carregado e interpretado no formato padrao.', 'success');
+    }
+
+    function clearAll() {
+      els.file.value = '';
+      els.fileName.textContent = 'Nenhum arquivo selecionado.';
+      els.paste.value = '';
+      state.dataset = buildEmptyCorrelationDataset();
+      state.lastResult = null;
+      renderPreview();
+      resetResultVisuals();
+      setIntakeStatus('status', 'Area limpa. Escolha um arquivo ou cole uma tabela para continuar.');
+    }
+
+    function renderAnalysisResult(result) {
+      const { dataset, pearson, spearman, outlierFlags, outlierLabels } = result;
+      const active = state.activeMethod === 'spearman' ? spearman : pearson;
+
+      els.error.innerHTML = '';
+      els.status.className = 'success-box';
+      els.status.textContent = `Analise concluida com ${dataset.x.length} linhas validas. Metodo em destaque: ${methodLabel(state.activeMethod)}.`;
+
+      els.metrics.innerHTML = [
+        correlationMetricCard('n', String(dataset.x.length), 'Total de pares validos usados nos calculos.'),
+        correlationMetricCard('r de Pearson', utils.fmtSigned(pearson.coef, 3), `p = ${utils.fmtP(pearson.p)} · IC95% ${utils.fmtNumber(pearson.ci[0], 3)} a ${utils.fmtNumber(pearson.ci[1], 3)}`, state.activeMethod === 'pearson' ? 'is-active' : ''),
+        correlationMetricCard('R² (Pearson)', utils.fmtNumber(pearson.r2, 3), 'Proporcao da variacao linear de Y explicada por X.'),
+        correlationMetricCard('rho de Spearman', utils.fmtSigned(spearman.coef, 3), `p = ${utils.fmtP(spearman.p)} · Metodo por postos.`, state.activeMethod === 'spearman' ? 'is-active' : ''),
+        correlationMetricCard('Metodo em destaque', methodLabel(state.activeMethod), state.activeMethod === 'pearson' ? 'Leitura de relacao linear.' : 'Leitura de associacao monotona por postos.'),
+        correlationMetricCard('Direcao e forca', `${classifyDirection(active.coef)} · ${classifyStrength(active.coef)}`, 'Resumo baseado no metodo selecionado.')
+      ].join('');
+
+      const interpretation = buildMethodInterpretation(dataset, pearson, spearman, outlierLabels, state.activeMethod, utils);
+      els.interpretation.innerHTML = `
+        <p>${utils.escapeHtml(interpretation)}</p>
+        <ul>
+          <li>${utils.escapeHtml(compareMessage(pearson, spearman))}</li>
+          <li>Inclinacao linear estimada (Pearson): ${utils.fmtSigned(pearson.slope, 3)} em ${utils.escapeHtml(dataset.headers[1])} para cada 1 unidade em ${utils.escapeHtml(dataset.headers[0])}.</li>
+        </ul>
+      `;
+
+      els.outlier.innerHTML = outlierLabels.length
+        ? `<div class="status-bar outlier-note"><strong>Atencao a possiveis outliers:</strong> ${utils.escapeHtml(outlierLabels.slice(0, 6).join(', '))}${outlierLabels.length > 6 ? '...' : ''}. Pearson tende a ser mais sensivel a pontos extremos que Spearman.</div>`
+        : '<div class="status-bar">Nenhum ponto se destacou fortemente como outlier pelo criterio de IQR nesta leitura inicial.</div>';
+
+      els.charts.innerHTML = `
+        <article class="chart-card">
+          <h4>Dispersao com reta de tendencia</h4>
+          <div class="chart-wrap">${buildScatterSvg(dataset, pearson, outlierFlags, utils)}</div>
+          <div class="small-note">A reta e mostrada para apoiar a interpretacao linear do Pearson, mesmo quando Spearman estiver em destaque.</div>
+        </article>
+        <article class="chart-card">
+          <h4>Pontos com maior distanciamento da reta</h4>
+          ${buildInfluenceTable(dataset, pearson, outlierFlags, utils)}
+          <div class="small-note" style="margin-top:12px;">Esta tabela substitui o grafico 2 antigo e ajuda a revisar pontos influentes de forma mais direta.</div>
+        </article>
+      `;
+    }
+
+    function runAnalysis() {
+      if (!state.dataset.hasContent && normalizeTabularSpaces(els.paste.value)) {
+        readPastedData();
+      }
+
+      const dataset = state.dataset;
+      resetResultVisuals();
+
+      if (!dataset.hasContent || dataset.errors.length) {
+        els.error.innerHTML = '<div class="error-box">Leia um arquivo compativel ou cole a tabela no formato padrao antes de rodar a analise.</div>';
+        return;
+      }
+
+      if (dataset.x.length < 4) {
+        els.error.innerHTML = '<div class="error-box">Forneca ao menos 4 pares validos para uma analise mais estavel.</div>';
+        return;
+      }
+
+      const pearson = stats.pearson(dataset.x, dataset.y);
+      const spearman = stats.spearman(dataset.x, dataset.y);
+
+      if (!Number.isFinite(pearson.coef) || !Number.isFinite(spearman.coef)) {
+        els.error.innerHTML = '<div class="error-box">Nao foi possivel calcular a correlacao. Revise se as colunas possuem variacao suficiente.</div>';
+        return;
+      }
+
+      const xOut = outlierMask(dataset.x);
+      const yOut = outlierMask(dataset.y);
+      const outlierFlags = xOut.map((flag, index) => flag || yOut[index]);
+      const outlierLabels = dataset.labels.filter((_, index) => outlierFlags[index]);
+
+      const result = {
+        dataset,
+        pearson,
+        spearman,
+        outlierFlags,
+        outlierLabels
+      };
+      state.lastResult = result;
+      renderAnalysisResult(result);
+    }
+
+    function setActiveMethod(method) {
+      state.activeMethod = method === 'spearman' ? 'spearman' : 'pearson';
+      Array.from(root.querySelectorAll('[data-correlation-method]')).forEach(button => {
+        const isActive = button.getAttribute('data-correlation-method') === state.activeMethod;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      if (state.lastResult) {
+        renderAnalysisResult(state.lastResult);
+      }
+    }
+
+    function currentDatasusSession() {
+      if (datasusState.session?.confirmedSources?.length) return datasusState.session;
+      if (datasusState.sharedSession?.confirmedSources?.length) return datasusState.sharedSession;
+      return null;
+    }
+
+    function confirmedSources() {
+      return currentDatasusSession()?.confirmedSources || [];
+    }
+
+    function getSource(sourceId) {
+      return confirmedSources().find(source => source.id === sourceId) || null;
+    }
+
+    function labelForPair(pair) {
+      if (datasusState.labelMode === 'category') return pair.category || pair.label;
+      if (datasusState.labelMode === 'time') return pair.time || pair.label;
+      return pair.label;
+    }
+
+    function sharedTimeOptions(leftSource, rightSource) {
+      const leftOptions = getTimeOptions(leftSource);
+      const rightKeys = new Set(getTimeOptions(rightSource).map(option => option.key));
+      return leftOptions.filter(option => rightKeys.has(option.key));
+    }
+
+    function availableTimeOptions() {
+      const xSource = getSource(datasusState.xSourceId);
+      const ySource = getSource(datasusState.ySourceId);
+      if (!xSource || !ySource) return [];
+      if (xSource.id === ySource.id) return getTimeOptions(xSource);
+      return sharedTimeOptions(xSource, ySource);
+    }
+
+    function ensureDatasusDefaults() {
+      const sources = confirmedSources();
+      if (!sources.length) {
+        datasusState.derived = null;
+        datasusState.xSourceId = '';
+        datasusState.ySourceId = '';
+        datasusState.timeKey = '';
+        return;
+      }
+
+      if (!sources.some(source => source.id === datasusState.xSourceId)) {
+        datasusState.xSourceId = sources[0].id;
+      }
+      if (!sources.some(source => source.id === datasusState.ySourceId)) {
+        datasusState.ySourceId = sources[1]?.id || sources[0].id;
+      }
+
+      sources.forEach(source => {
+        if (!datasusState.metricBySource[source.id]) {
+          datasusState.metricBySource[source.id] = getPrimaryMetricKey(source);
+        }
+      });
+
+      const timeOptions = availableTimeOptions();
+      if (timeOptions.length && !timeOptions.some(option => option.key === datasusState.timeKey)) {
+        datasusState.timeKey = '';
+      }
+    }
+
+    function deriveDatasusPairs() {
+      ensureDatasusDefaults();
+      const xSource = getSource(datasusState.xSourceId);
+      const ySource = getSource(datasusState.ySourceId);
+
+      if (!xSource || !ySource) {
+        return {
+          ok: false,
+          primaryError: 'Confirme pelo menos uma base DATASUS para montar a correlacao.',
+          errors: ['Confirme pelo menos uma base DATASUS para montar a correlacao.'],
+          pairs: []
+        };
+      }
+
+      return deriveCorrelationPairs({
+        xSource,
+        ySource,
+        xMetricKey: datasusState.metricBySource[xSource.id],
+        yMetricKey: datasusState.metricBySource[ySource.id],
+        timeKeys: datasusState.timeKey ? [datasusState.timeKey] : [],
+        stats
+      });
+    }
+
+    function renderDatasusPreview() {
+      if (isMissingElementRef(els.datasusPreview)) return;
+
+      const derived = deriveDatasusPairs();
+      datasusState.derived = derived;
+
+      if (!derived.ok) {
+        els.datasusPreview.innerHTML = `
+          <div class="error-box">
+            <strong>Base derivada ainda invalida.</strong>
+            <ul class="datasus-inline-list">
+              ${(derived.errors || [derived.primaryError || 'Nao ha pares validos suficientes.']).map(item => `<li>${utils.escapeHtml(item)}</li>`).join('')}
+            </ul>
+          </div>
+        `;
+        return;
+      }
+
+      const rows = derived.pairs.map((pair, index) => [
+        labelForPair(pair) || `Obs ${index + 1}`,
+        utils.fmtNumber(pair.x, 3),
+        utils.fmtNumber(pair.y, 3)
+      ]);
+
+      els.datasusPreview.innerHTML = `
+        <div class="success-box">A base derivada esta pronta para alimentar o modulo de correlacao.</div>
+        <div class="small-note" style="margin:14px 0 10px;">Cada linha abaixo corresponde a um par valido X/Y para Pearson e Spearman.</div>
+        ${utils.renderPreviewTable(['ID', derived.xLabel || 'X', derived.yLabel || 'Y'], rows, 20)}
+      `;
+    }
+
+    function pushDatasusToCorrelation() {
+      const derived = deriveDatasusPairs();
+      datasusState.derived = derived;
+      renderDatasusPreview();
+
+      if (!derived.ok) {
+        if (!isMissingElementRef(els.datasusControls)) {
+          els.datasusControls.innerHTML = `<div class="error-box">${utils.escapeHtml(derived.primaryError || 'Nao ha pares validos suficientes.')}</div>`;
+        }
+        return;
+      }
+
+      els.paste.value = [
+        'id;variavel_x;variavel_y',
+        ...derived.pairs.map((pair, index) => `${labelForPair(pair) || `Obs ${index + 1}`};${pair.x};${pair.y}`)
+      ].join('\n');
+      els.file.value = '';
+      els.fileName.textContent = 'Nenhum arquivo selecionado.';
+      readPastedData('Base derivada do DATASUS enviada para a analise.', 'success');
+      runAnalysis();
+    }
+
+    function renderDatasusControls() {
+      if (isMissingElementRef(els.datasusControls)) return;
+
+      const sources = confirmedSources();
+      if (!sources.length) {
+        const hasShared = Boolean(shared?.datasus?.lastSession?.confirmedSources?.length);
+        els.datasusControls.innerHTML = `
+          <div class="status-bar">Confirme uma base DATASUS no wizard para liberar a derivacao da correlacao.</div>
+          ${hasShared ? '<div class="actions-row" style="margin-top:14px;"><button type="button" class="btn-secondary" id="c-datasus-use-shared">Usar ultima sessao DATASUS confirmada</button></div>' : ''}
+        `;
+        if (!isMissingElementRef(els.datasusPreview)) {
+          els.datasusPreview.innerHTML = '';
+        }
+        els.datasusControls.querySelector('#c-datasus-use-shared')?.addEventListener('click', () => {
+          datasusState.sharedSession = clonePlain(shared.datasus.lastSession);
+          renderDatasusControls();
+          renderDatasusPreview();
+        });
+        return;
+      }
+
+      ensureDatasusDefaults();
+      const xSource = getSource(datasusState.xSourceId);
+      const ySource = getSource(datasusState.ySourceId);
+      const xMetrics = getMetricOptions(xSource);
+      const yMetrics = getMetricOptions(ySource);
+      const timeOptions = availableTimeOptions();
+
+      els.datasusControls.innerHTML = `
+        <div class="form-grid two">
+          <div>
+            <label for="c-datasus-x-source">Fonte X</label>
+            <select id="c-datasus-x-source">
+              ${sources.map(source => `<option value="${utils.escapeHtml(source.id)}"${source.id === datasusState.xSourceId ? ' selected' : ''}>${utils.escapeHtml(source.fileName)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label for="c-datasus-y-source">Fonte Y</label>
+            <select id="c-datasus-y-source">
+              ${sources.map(source => `<option value="${utils.escapeHtml(source.id)}"${source.id === datasusState.ySourceId ? ' selected' : ''}>${utils.escapeHtml(source.fileName)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-grid two" style="margin-top:14px;">
+          <div>
+            <label for="c-datasus-x-metric">Variavel X</label>
+            <select id="c-datasus-x-metric">
+              ${xMetrics.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.metricBySource[xSource.id] ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label for="c-datasus-y-metric">Variavel Y</label>
+            <select id="c-datasus-y-metric">
+              ${yMetrics.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.metricBySource[ySource.id] ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-grid two" style="margin-top:14px;">
+          <div>
+            <label for="c-datasus-time">Periodo</label>
+            <select id="c-datasus-time">
+              <option value="">Todos os periodos disponiveis</option>
+              ${timeOptions.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === datasusState.timeKey ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label for="c-datasus-label-mode">Rotulo dos pares</label>
+            <select id="c-datasus-label-mode">
+              <option value="category"${datasusState.labelMode === 'category' ? ' selected' : ''}>Categoria</option>
+              <option value="time"${datasusState.labelMode === 'time' ? ' selected' : ''}>Tempo</option>
+              <option value="category-time"${datasusState.labelMode === 'category-time' ? ' selected' : ''}>Categoria + tempo</option>
+            </select>
+          </div>
+        </div>
+        <div class="actions-row" style="margin-top:14px;">
+          <button type="button" class="btn" id="c-datasus-send">Enviar base derivada</button>
+        </div>
+      `;
+
+      els.datasusControls.querySelector('#c-datasus-x-source')?.addEventListener('change', event => {
+        datasusState.xSourceId = event.target.value;
+        ensureDatasusDefaults();
+        renderDatasusControls();
+        renderDatasusPreview();
+      });
+
+      els.datasusControls.querySelector('#c-datasus-y-source')?.addEventListener('change', event => {
+        datasusState.ySourceId = event.target.value;
+        ensureDatasusDefaults();
+        renderDatasusControls();
+        renderDatasusPreview();
+      });
+
+      els.datasusControls.querySelector('#c-datasus-x-metric')?.addEventListener('change', event => {
+        datasusState.metricBySource[xSource.id] = event.target.value;
+        renderDatasusPreview();
+      });
+
+      els.datasusControls.querySelector('#c-datasus-y-metric')?.addEventListener('change', event => {
+        datasusState.metricBySource[ySource.id] = event.target.value;
+        renderDatasusPreview();
+      });
+
+      els.datasusControls.querySelector('#c-datasus-time')?.addEventListener('change', event => {
+        datasusState.timeKey = event.target.value;
+        renderDatasusPreview();
+      });
+
+      els.datasusControls.querySelector('#c-datasus-label-mode')?.addEventListener('change', event => {
+        datasusState.labelMode = event.target.value;
+        renderDatasusPreview();
+      });
+
+      els.datasusControls.querySelector('#c-datasus-send')?.addEventListener('click', pushDatasusToCorrelation);
+    }
+
+    function mountDatasusWizard() {
+      if (isMissingElementRef(els.datasusWizard)) return;
+      createDatasusWizard({
+        root: els.datasusWizard,
+        utils,
+        stats,
+        shared,
+        onSessionChange(session) {
+          datasusState.session = clonePlain(session);
+          datasusState.sharedSession = clonePlain(shared?.datasus?.lastSession || null);
+          renderDatasusControls();
+          renderDatasusPreview();
+        }
+      });
+    }
+
+    safeBind(root, '#c-file', 'change', async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      await readSelectedFile(file);
+    }, { label: 'upload de arquivo', optional: true });
+    safeBind(root, '#c-use-example', 'click', loadExample, { label: 'botao usar exemplo', optional: true });
+    safeBind(root, '#c-read-data', 'click', readPastedData, { label: 'botao ler dados', optional: true });
+    safeBind(root, '#c-clear', 'click', clearAll, { label: 'botao limpar', optional: true });
+    safeBind(root, '#c-run-analysis', 'click', runAnalysis, { label: 'botao rodar analise', optional: true });
+    safeBindAll(root, '[data-correlation-method]', 'click', event => {
+      setActiveMethod(event.currentTarget?.getAttribute?.('data-correlation-method') || 'pearson');
+    }, { label: 'seletor de metodo', optional: true });
+
+    mountDatasusWizard();
+    renderDatasusControls();
+    renderDatasusPreview();
+    clearAll();
+  } catch (error) {
+    console.error(error);
+    root.innerHTML = `<div class="error-box">Nao foi possivel carregar o modulo de correlacao: ${utils.escapeHtml(error?.message || 'erro desconhecido')}.</div>`;
+  }
+}
