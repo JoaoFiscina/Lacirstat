@@ -5,151 +5,44 @@ import {
   getPrimaryMetricKey,
   getTimeOptions
 } from '../../assets/js/datasus-normalizer.js';
+import {
+  buildRecognizedColumnsChips,
+  describeIgnoredRowReason,
+  normalizeTabularSpaces,
+  parseTabularNumber,
+  readTabularFileState,
+  readTabularPasteState
+} from '../../assets/js/tabular-data-input.js';
+
+const CORRELATION_EMPTY_TEMPLATE_URL = new URL('./templates/modelo-correlacao-vazio.csv', import.meta.url).href;
+const CORRELATION_FILLED_TEMPLATE_URL = new URL('./templates/modelo-correlacao-exemplo.csv', import.meta.url).href;
+const CORRELATION_FORMAT_LABEL = 'id;variavel_x;variavel_y;observacao_opcional';
+const CORRELATION_HEADER_ALIASES = {
+  id: ['id', 'unidade', 'uf', 'nome', 'rotulo', 'rotulo', 'identificador'],
+  variavel_x: ['variavel_x', 'variavel x', 'x', 'grupo_x'],
+  variavel_y: ['variavel_y', 'variavel y', 'y', 'grupo_y'],
+  observacao_opcional: ['observacao', 'observacao opcional', 'obs', 'comentario', 'comentario opcional']
+};
+const CORRELATION_RECOGNIZED_ORDER = [
+  { key: 'id', label: 'id' },
+  { key: 'variavel_x', label: 'variavel_x' },
+  { key: 'variavel_y', label: 'variavel_y' },
+  { key: 'observacao_opcional', label: 'observacao_opcional' }
+];
+const CORRELATION_EXAMPLE_ROWS = [
+  ['Rondonia', '12,3', '45,2', ''],
+  ['Acre', '14,1', '43,8', ''],
+  ['Amazonas', '10,9', '48,0', ''],
+  ['Roraima', '13,7', '44,1', '']
+];
+const CORRELATION_EXAMPLE_TEXT = [
+  CORRELATION_FORMAT_LABEL,
+  ...CORRELATION_EXAMPLE_ROWS.map(row => row.join(';'))
+].join('\n');
+const CORRELATION_BOUND_EVENTS = Symbol('correlation-bound-events');
 
 function clonePlain(value) {
   return value ? JSON.parse(JSON.stringify(value)) : value;
-}
-
-function splitDelimitedLine(line, delimiter) {
-  if (!line) return [''];
-  const cells = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const next = line[i + 1];
-    const prev = line[i - 1];
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if (!inQuotes && char === delimiter) {
-      if (delimiter === ',' && /\d/.test(prev || '') && /\d/.test(next || '')) {
-        current += char;
-      } else {
-        cells.push(current.trim());
-        current = '';
-      }
-      continue;
-    }
-    current += char;
-  }
-  cells.push(current.trim());
-  return cells;
-}
-
-function detectDelimiter(lines) {
-  const sample = lines.slice(0, Math.min(5, lines.length));
-  let tabScore = 0;
-  let semiScore = 0;
-  let commaScore = 0;
-  sample.forEach(line => {
-    tabScore += (line.match(/\t/g) || []).length;
-    semiScore += (line.match(/;/g) || []).length;
-    const chars = [...line];
-    for (let i = 0; i < chars.length; i++) {
-      if (chars[i] !== ',') continue;
-      if (/\d/.test(chars[i - 1] || '') && /\d/.test(chars[i + 1] || '')) continue;
-      commaScore += 1;
-    }
-  });
-  if (tabScore >= semiScore && tabScore >= commaScore && tabScore > 0) return '\t';
-  if (semiScore >= commaScore && semiScore > 0) return ';';
-  return ',';
-}
-
-function hasHeaderLikely(firstRow, xIndex, yIndex, stats) {
-  return stats.parseNumber(firstRow[xIndex]) === null || stats.parseNumber(firstRow[yIndex]) === null;
-}
-
-function parseDataset(text, stats) {
-  const rawLines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-  if (!rawLines.length) {
-    return {
-      headers: ['X', 'Y'],
-      rows: [],
-      labels: [],
-      x: [],
-      y: [],
-      rawCount: 0,
-      ignoredCount: 0,
-      hasIdentifier: false
-    };
-  }
-
-  const delimiter = detectDelimiter(rawLines);
-  let parsedRows = rawLines.map(line => splitDelimitedLine(line, delimiter));
-  parsedRows = parsedRows.filter(row => row.some(cell => String(cell || '').trim() !== ''));
-
-  const firstRow = parsedRows[0] || [];
-  const hasThreeColumns = parsedRows.some(row => (row.length >= 3 && String(row[2] || '').trim() !== ''));
-
-  let labelIndex = null;
-  let xIndex = 0;
-  let yIndex = 1;
-
-  if (hasThreeColumns) {
-    labelIndex = 0;
-    xIndex = 1;
-    yIndex = 2;
-  } else if (stats.parseNumber(firstRow[0]) === null && stats.parseNumber(firstRow[1]) !== null) {
-    labelIndex = 0;
-    xIndex = 1;
-    yIndex = 2;
-  }
-
-  if (labelIndex !== null) {
-    parsedRows = parsedRows.map(row => {
-      const normalized = [...row];
-      while (normalized.length < 3) normalized.push('');
-      return normalized;
-    });
-  } else {
-    parsedRows = parsedRows.map(row => {
-      const normalized = [...row];
-      while (normalized.length < 2) normalized.push('');
-      return normalized;
-    });
-  }
-
-  const headerExists = hasHeaderLikely(parsedRows[0], xIndex, yIndex, stats);
-  let headers = ['X', 'Y'];
-  if (headerExists) {
-    const headerRow = parsedRows.shift() || [];
-    headers = [headerRow[xIndex] || 'X', headerRow[yIndex] || 'Y'];
-  }
-
-  const rows = [];
-  const labels = [];
-  const x = [];
-  const y = [];
-
-  parsedRows.forEach((row, i) => {
-    const xVal = stats.parseNumber(row[xIndex]);
-    const yVal = stats.parseNumber(row[yIndex]);
-    if (xVal === null || yVal === null) return;
-    const label = labelIndex !== null ? String(row[labelIndex] || `Obs ${i + 1}`) : `Obs ${i + 1}`;
-    x.push(xVal);
-    y.push(yVal);
-    labels.push(label);
-    rows.push([label, String(row[xIndex]), String(row[yIndex])]);
-  });
-
-  return {
-    headers,
-    rows,
-    labels,
-    x,
-    y,
-    rawCount: parsedRows.length,
-    ignoredCount: Math.max(0, parsedRows.length - x.length),
-    hasIdentifier: labelIndex !== null
-  };
 }
 
 function quantile(sorted, q) {
