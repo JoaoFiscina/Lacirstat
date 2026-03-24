@@ -338,6 +338,8 @@ function buildPraisDatasetFromTabularState(fileState, stats, sourceMeta = {}) {
       return left.index - right.index;
     });
   dataset.reordered = dataset.validRows.some((row, index) => row.index !== dataset.orderedRows[index]?.index);
+  dataset.time = dataset.orderedRows.map(row => row.timeValue);
+  dataset.values = dataset.orderedRows.map(row => row.yValue);
 
   const duplicateMap = new Map();
   dataset.orderedRows.forEach(row => {
@@ -416,6 +418,9 @@ function buildPraisDatasetFromTabularState(fileState, stats, sourceMeta = {}) {
   if (dominantTimeType === 'year') dataset.timeTypeSummary = 'anos';
   else if (dominantTimeType === 'year-month' || dominantTimeType === 'month-year') dataset.timeTypeSummary = 'competências mensais';
   else if (dominantTimeType) dataset.timeTypeSummary = 'valores numéricos ordenáveis';
+  if (dataset.timeTypeSummary) {
+    dataset.infos.push(`A variável temporal foi interpretada como ${dataset.timeTypeSummary}.`);
+  }
 
   return dataset;
 }
