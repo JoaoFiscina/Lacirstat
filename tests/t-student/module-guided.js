@@ -1287,7 +1287,7 @@ export async function renderTestModule(ctx) {
   root.innerHTML = `
     <div class="module-grid">
       <section class="module-header tstudent-header">
-        <div class="chip chip-primary">Modulo didatico · comparacoes guiadas</div>
+        <div class="chip chip-primary">M\u00f3dulo guiado \u00b7 t de Student</div>
         <h3>${utils.escapeHtml(config.title)}</h3>
         <p>${utils.escapeHtml(config.description)}</p>
       </section>
@@ -1303,10 +1303,10 @@ export async function renderTestModule(ctx) {
 
       <section class="surface-card decorated">
         <div class="tstudent-mode-switch" role="tablist" aria-label="Modo de entrada do teste t">
-          <button type="button" class="tstudent-mode-btn active" data-mode-target="manual" aria-selected="true">Entrada rapida</button>
+          <button type="button" class="tstudent-mode-btn active" data-mode-target="manual" aria-selected="true">Entrada principal</button>
           <button type="button" class="tstudent-mode-btn" data-mode-target="datasus" aria-selected="false">Assistente DATASUS</button>
         </div>
-        <p class="small-note" style="margin:12px 0 0;">O caminho principal deste modulo agora e a entrada por colagem rapida ou arquivo no formato padrao. O assistente DATASUS continua disponivel.</p>
+        <p class="small-note" style="margin:12px 0 0;">O fluxo principal prioriza arquivo, colagem e revisao da base. O assistente DATASUS continua disponivel sem remover o modo manual.</p>
       </section>
 
       <div class="tstudent-mode-panel" data-mode-panel="datasus">
@@ -1341,7 +1341,7 @@ export async function renderTestModule(ctx) {
         <section class="surface-card tstudent-statistics-section">
           <div class="tstudent-step-head">
             <span class="small-chip info">Passo 4</span>
-            <h4>Rodar teste e interpretar</h4>
+            <h4>Rodar analise e interpretar</h4>
           </div>
           <div class="form-grid two" style="margin-top:14px;">
             <div>
@@ -1378,10 +1378,10 @@ export async function renderTestModule(ctx) {
       <div class="tstudent-mode-panel active" data-mode-panel="manual">
         <section class="surface-card decorated">
           <div class="tstudent-step-head">
-            <span class="small-chip info">Entrada pratica</span>
-            <h4>Importar, colar e editar</h4>
+            <span class="small-chip info">Fluxo principal</span>
+            <h4>Importar arquivo e colar dados</h4>
           </div>
-          <p class="small-note tstudent-section-note">O fluxo principal deste modulo agora prioriza planilhas brasileiras: CSV com <strong>;</strong>, decimal com <strong>,</strong> e colagem direta do Excel.</p>
+          <p class="small-note tstudent-section-note">Use planilhas brasileiras com <strong>;</strong>, decimal com <strong>,</strong> e colagem direta do Excel. O editor por grupos continua disponivel logo abaixo.</p>
           <div class="tstudent-manual-mode-grid" style="margin-top:14px;">
             <button type="button" class="tstudent-choice-card is-active" data-manual-analysis="independent">
               <strong>t independente</strong>
@@ -1424,6 +1424,10 @@ export async function renderTestModule(ctx) {
                 Modelo oficial: <code>${utils.escapeHtml(MANUAL_WIDE_FORMAT_LABEL)}</code><br />
                 Aliases: unidade, uf, unidade_analitica, grupo_a, grupo_b, observacao/opcional.
               </div>
+              <div class="actions-row tstudent-actions-compact">
+                <a class="btn-secondary" href="${MANUAL_EMPTY_TEMPLATE_URL}" download="modelo_t_student_vazio.csv">Baixar modelo</a>
+                <a class="btn-ghost" href="${MANUAL_FILLED_TEMPLATE_URL}" download="modelo_t_student_exemplo.csv">Exemplo CSV</a>
+              </div>
               <div id="t-file-status" class="status-bar" style="margin-top:14px;">Nenhum arquivo lido ainda.</div>
               <div id="t-file-recognition" class="tstudent-config-summary" style="margin-top:12px;"></div>
             </article>
@@ -1436,7 +1440,7 @@ export async function renderTestModule(ctx) {
               <textarea id="t-paste-data" class="tstudent-paste-textarea" placeholder="${utils.escapeHtml(MANUAL_WIDE_EXAMPLE_TEXT).replace(/\n/g, '&#10;')}"></textarea>
               <div class="small-note">Aceita conteudo com <strong>;</strong>, tabulacao do Excel e numeros com virgula decimal.</div>
               <div class="actions-row tstudent-actions-compact">
-                <button class="btn-secondary" id="t-paste-read" type="button">Ler dados colados</button>
+                <button class="btn-secondary" id="t-paste-read" type="button">Ler dados</button>
                 <button class="btn-ghost" id="t-example" type="button">Usar exemplo</button>
                 <button class="btn-ghost" id="t-clear" type="button">Limpar</button>
               </div>
@@ -1482,27 +1486,6 @@ export async function renderTestModule(ctx) {
 
         <section class="surface-card">
           <div class="tstudent-step-head">
-            <span class="small-chip info">Modelo</span>
-            <h4>Como organizar no Excel</h4>
-          </div>
-          <p class="small-note tstudent-section-note">Formato wide recomendado para upload, colagem e revisao metodologica da planilha.</p>
-          <div class="tstudent-format-example"><code>${utils.escapeHtml(MANUAL_WIDE_EXAMPLE_TEXT).replace(/\n/g, '<br />')}</code></div>
-          ${utils.renderPreviewTable(MANUAL_WIDE_PREVIEW_HEADERS, MANUAL_WIDE_EXAMPLE_ROWS, 4)}
-          <ul class="tstudent-inline-list">
-            <li>Cada linha = uma observacao ou unidade analitica.</li>
-            <li><strong>grupo_a</strong> e <strong>grupo_b</strong> sao as colunas comparadas.</li>
-            <li><strong>observacao_opcional</strong> nao entra no calculo.</li>
-            <li>No t pareado, a mesma linha representa a mesma unidade nas duas colunas.</li>
-            <li>No t independente, o site pode aproveitar as duas colunas mesmo sem pareamento, desde que haja dados validos.</li>
-          </ul>
-          <div class="actions-row" style="margin-top:14px;">
-            <a class="btn-secondary" href="${MANUAL_EMPTY_TEMPLATE_URL}" download="modelo_t_student_vazio.csv">Baixar modelo vazio</a>
-            <a class="btn-ghost" href="${MANUAL_FILLED_TEMPLATE_URL}" download="modelo_t_student_exemplo.csv">Baixar exemplo preenchido</a>
-          </div>
-        </section>
-
-        <section class="surface-card">
-          <div class="tstudent-step-head">
             <span class="small-chip info">Revisao</span>
             <h4>Previa / revisao dos dados</h4>
           </div>
@@ -1514,7 +1497,7 @@ export async function renderTestModule(ctx) {
           <div id="t-preview" class="small-note" style="margin-top:14px;">Nenhum dado carregado ainda.</div>
           <div id="t-group-summary" class="metrics-grid t-group-summary" style="margin-top:14px;"></div>
           <div class="actions-row" style="margin-top:14px;">
-            <button class="btn" id="t-run" type="button">Rodar teste</button>
+            <button class="btn" id="t-run" type="button">Rodar analise</button>
           </div>
         </section>
 
@@ -1682,7 +1665,7 @@ export async function renderTestModule(ctx) {
     manual.resultsEl.innerHTML = '';
   }
 
-  function invalidateManualResults(message = 'A previa foi atualizada. Revise os dados e clique em "Rodar teste".') {
+  function invalidateManualResults(message = 'A previa foi atualizada. Revise os dados e clique em "Rodar analise".') {
     manual.statusEl.className = 'status-bar';
     manual.statusEl.textContent = message;
     manual.metricsEl.innerHTML = '';
@@ -1730,7 +1713,7 @@ export async function renderTestModule(ctx) {
     if (!manualState.pasteState) {
       manual.pasteStatusEl.className = 'status-bar';
       manual.pasteStatusEl.textContent = rawPaste
-        ? 'Clique em "Ler dados colados" para interpretar a tabela.'
+        ? 'Clique em "Ler dados" para interpretar a tabela.'
         : 'Nenhum dado colado ainda.';
       manual.pasteRecognitionEl.innerHTML = '';
       return;
@@ -1768,7 +1751,7 @@ export async function renderTestModule(ctx) {
     if (manualState.fileState.status === 'error') {
       manual.fileStatusEl.className = 'error-box';
       manual.fileStatusEl.innerHTML = `
-        <strong>${utils.escapeHtml(manualState.fileState.fileName || 'arquivo')}</strong><br />
+        <strong class="module-file-name" title="${utils.escapeHtml(manualState.fileState.fileName || 'arquivo')}">${utils.escapeHtml(manualState.fileState.fileName || 'arquivo')}</strong><br />
         ${utils.escapeHtml(manualState.fileState.message)}
       `;
       manual.fileRecognitionEl.innerHTML = Array.isArray(manualState.fileState.details) && manualState.fileState.details.length
@@ -1789,7 +1772,7 @@ export async function renderTestModule(ctx) {
 
     manual.fileStatusEl.className = 'success-box';
     manual.fileStatusEl.innerHTML = `
-      <strong>${utils.escapeHtml(manualState.fileState.fileName)}</strong><br />
+      <strong class="module-file-name" title="${utils.escapeHtml(manualState.fileState.fileName)}">${utils.escapeHtml(manualState.fileState.fileName)}</strong><br />
       ${utils.escapeHtml(`Arquivo lido em ${manualState.fileState.tableName}. ${headerText} ${delimiterText} ${decimalText}`.trim())}
     `;
     manual.fileRecognitionEl.innerHTML = buildRecognizedColumnsChips(manualState.fileState.recognizedColumns);
@@ -1999,7 +1982,7 @@ export async function renderTestModule(ctx) {
     manualState.fileState = null;
     manualState.activeSource = 'paste';
     refreshManualPreview();
-    invalidateManualResults('Exemplo aplicado no formato brasileiro. Revise a base e clique em "Rodar teste".');
+    invalidateManualResults('Exemplo aplicado no formato brasileiro. Revise a base e clique em "Rodar analise".');
   }
 
   function handlePastedTextInput() {
@@ -2008,7 +1991,7 @@ export async function renderTestModule(ctx) {
       manualState.activeSource = 'quick';
     }
     refreshManualPreview();
-    invalidateManualResults('Conteudo colado atualizado. Clique em "Ler dados colados" para revisar essa tabela.');
+    invalidateManualResults('Conteudo colado atualizado. Clique em "Ler dados" para revisar essa tabela.');
   }
 
   function readManualPasteInput() {
@@ -2017,7 +2000,7 @@ export async function renderTestModule(ctx) {
       manualState.pasteState = null;
       manualState.activeSource = 'quick';
       refreshManualPreview();
-      invalidateManualResults('Cole uma tabela antes de usar "Ler dados colados".');
+      invalidateManualResults('Cole uma tabela antes de usar "Ler dados".');
       return;
     }
 
@@ -2025,7 +2008,7 @@ export async function renderTestModule(ctx) {
     manualState.activeSource = 'paste';
     refreshManualPreview();
     invalidateManualResults(manualState.pasteState.status === 'loaded'
-      ? 'Dados colados lidos. Revise a previa e clique em "Rodar teste".'
+      ? 'Dados colados lidos. Revise a previa e clique em "Rodar analise".'
       : 'Nao foi possivel interpretar os dados colados. Confira a mensagem acima.');
   }
 
@@ -2041,7 +2024,7 @@ export async function renderTestModule(ctx) {
     manualState.activeSource = 'file';
     refreshManualPreview();
     invalidateManualResults(manualState.fileState.status === 'loaded'
-      ? 'Arquivo lido. Revise a previa e clique em "Rodar teste".'
+      ? 'Arquivo lido. Revise a previa e clique em "Rodar analise".'
       : 'Houve um problema na leitura do arquivo. Confira a mensagem acima.');
   }
 

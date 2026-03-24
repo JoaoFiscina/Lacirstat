@@ -457,6 +457,162 @@ input[type="file"] {
   height: auto;
 }
 
+.module-workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+.module-workflow-card {
+  grid-column: span 6;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid rgba(216, 226, 240, 0.92);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,251,255,0.96) 100%);
+}
+.module-workflow-card.is-wide { grid-column: span 8; }
+.module-workflow-card.is-compact { grid-column: span 4; }
+.module-workflow-card.is-full { grid-column: 1 / -1; }
+.module-workflow-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.module-workflow-head h5 {
+  margin: 0;
+  font-size: 1rem;
+  color: #1f3247;
+}
+.module-workflow-note {
+  margin: 0;
+}
+.module-file-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.module-hidden-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.module-file-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.module-file-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.module-file-helper {
+  display: grid;
+  gap: 10px;
+}
+.module-textarea-lg {
+  min-height: 220px;
+  font-family: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+  font-size: .94rem;
+  line-height: 1.55;
+}
+.module-toolbar-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.module-toolbar-inline > * {
+  min-width: 0;
+}
+.module-select-inline {
+  min-width: min(280px, 100%);
+  flex: 1 1 220px;
+}
+.module-preview-stack,
+.module-result-stack {
+  display: grid;
+  gap: 14px;
+}
+.module-panel-soft {
+  padding: 16px;
+  border: 1px solid rgba(216, 226, 240, 0.92);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,251,255,0.98) 100%);
+}
+.module-panel-soft > :first-child {
+  margin-top: 0;
+}
+.module-preview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+.module-preview-summary .small-chip,
+.module-preview-summary .chip {
+  max-width: min(100%, 320px);
+}
+.module-actions-tight {
+  gap: 10px;
+}
+.module-stacked-results {
+  display: grid;
+  gap: 18px;
+}
+.module-stacked-results > * {
+  min-width: 0;
+}
+
+.tstudent-module .callout-grid,
+.correlacao-module .callout-grid,
+.prais-module .callout-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+}
+.tstudent-module .didactic-card,
+.correlacao-module .didactic-card,
+.prais-module .didactic-card {
+  border-radius: 18px;
+  box-shadow: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(248,251,255,0.92) 100%);
+}
+.tstudent-module .surface-card,
+.correlacao-module .surface-card,
+.prais-module .surface-card,
+.tstudent-module .chart-card,
+.correlacao-module .chart-card,
+.prais-module .chart-card,
+.tstudent-module .result-card,
+.correlacao-module .result-card,
+.prais-module .result-card {
+  box-shadow: var(--shadow-soft);
+}
+.tstudent-module .surface-card h4,
+.correlacao-module .surface-card h4,
+.prais-module .surface-card h4,
+.tstudent-module .chart-card h4,
+.correlacao-module .chart-card h4,
+.prais-module .chart-card h4 {
+  margin-bottom: 10px;
+}
+
 .preview-table-wrap {
   width: 100%;
   max-width: 100%;
@@ -615,6 +771,12 @@ input[type="file"] {
 @media (max-width: 980px) {
   .page-shell { grid-template-columns: 1fr; }
   .form-grid.two, .form-grid.three { grid-template-columns: 1fr; }
+  .module-workflow-card,
+  .module-workflow-card.is-compact,
+  .module-workflow-card.is-wide,
+  .module-workflow-card.is-full {
+    grid-column: 1 / -1;
+  }
   .datasus-toolbar { align-items: stretch; }
   .datasus-toolbar-actions { width: 100%; }
 }

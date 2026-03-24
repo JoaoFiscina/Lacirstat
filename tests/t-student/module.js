@@ -825,9 +825,9 @@ export function buildResultChartsHtml(result, labels, g1, g2, stats, utils) {
       <div class="small-note" style="margin-top:10px;">Cada ponto representa uma observa\u00e7\u00e3o, com resumo visual da dispers\u00e3o e da m\u00e9dia de cada grupo.</div>
     </article>
     <article class="chart-card">
-      <h4>Gr\u00e1fico 2 \u00b7 Compara\u00e7\u00e3o de m\u00e9dias e IC95%</h4>
+      <h4>Gr\u00e1fico 2 \u00b7 Diferen\u00e7a entre m\u00e9dias e IC95%</h4>
       <div class="chart-wrap">${buildMeanCiSvg(result, labels, utils)}</div>
-      <div class="small-note" style="margin-top:10px;">A barra central indica o IC95% da diferen\u00e7a (${utils.escapeHtml(labels[0])} - ${utils.escapeHtml(labels[1])}).</div>
+      <div class="small-note" style="margin-top:10px;">Use este painel para ver se a diferen\u00e7a estimada se afasta de zero e qual a faixa plaus\u00edvel do efeito entre ${utils.escapeHtml(labels[0])} e ${utils.escapeHtml(labels[1])}.</div>
     </article>
   `;
 }
