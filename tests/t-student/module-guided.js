@@ -1459,80 +1459,6 @@ export async function renderTestModule(ctx) {
         `).join('')}
       </section>
 
-      <section class="surface-card decorated">
-        <div class="tstudent-mode-switch" role="tablist" aria-label="Modo de entrada do teste t">
-          <button type="button" class="tstudent-mode-btn active" data-mode-target="manual" aria-selected="true">Entrada principal</button>
-          <button type="button" class="tstudent-mode-btn" data-mode-target="datasus" aria-selected="false">Assistente DATASUS</button>
-        </div>
-        <p class="small-note" style="margin:12px 0 0;">O fluxo principal prioriza arquivo, colagem e revisao da base. O assistente DATASUS continua disponivel sem remover o modo manual.</p>
-      </section>
-
-      <div class="tstudent-mode-panel" data-mode-panel="datasus">
-        <section class="surface-card decorated">
-          <div id="t-datasus-wizard"></div>
-        </section>
-
-        <section class="surface-card">
-          <div class="tstudent-step-head">
-            <span class="small-chip info">Passo 1</span>
-            <h4>Qual tipo de comparacao voce quer fazer?</h4>
-          </div>
-          <div id="t-datasus-analysis-step" class="small-note" style="margin-top:14px;">Confirme pelo menos uma base DATASUS para liberar esta etapa.</div>
-        </section>
-
-        <section class="surface-card">
-          <div class="tstudent-step-head">
-            <span class="small-chip info">Passo 2</span>
-            <h4>Selecionar dados</h4>
-          </div>
-          <div id="t-datasus-selection-step" class="small-note" style="margin-top:14px;">Escolha o fluxo desejado para selecionar fontes, categorias e periodo.</div>
-        </section>
-
-        <section class="surface-card">
-          <div class="tstudent-step-head">
-            <span class="small-chip info">Passo 3</span>
-            <h4>Revisar base derivada</h4>
-          </div>
-          <div id="t-datasus-derived" class="small-note" style="margin-top:14px;">A base derivada sera mostrada aqui antes do teste.</div>
-        </section>
-
-        <section class="surface-card tstudent-statistics-section">
-          <div class="tstudent-step-head">
-            <span class="small-chip info">Passo 4</span>
-            <h4>Rodar analise e interpretar</h4>
-          </div>
-          <div class="form-grid two" style="margin-top:14px;">
-            <div>
-              <label for="t-datasus-context">Pergunta do estudo</label>
-              <input id="t-datasus-context" type="text" value="${utils.escapeHtml(defaultDatasusQuestion)}" />
-            </div>
-            <div>
-              <label for="t-datasus-alpha">Nivel de significancia</label>
-              <select id="t-datasus-alpha">
-                <option value="0.01">1%</option>
-                <option value="0.05" selected>5%</option>
-                <option value="0.10">10%</option>
-              </select>
-            </div>
-          </div>
-          <div class="actions-row" style="margin-top:14px;">
-            <button class="btn" id="t-datasus-run" type="button" disabled>Rodar analise</button>
-          </div>
-          <div id="t-datasus-status" class="status-bar" style="margin-top:16px;">Aguardando base derivada valida.</div>
-          <div id="t-datasus-metrics" class="metrics-grid" style="margin-top:14px;"></div>
-        </section>
-
-        <section class="surface-card tstudent-chart-section">
-          <h4>Graficos do teste</h4>
-          <div id="t-datasus-chart" class="chart-grid" style="margin-top:14px;"></div>
-        </section>
-
-        <section class="surface-card tstudent-interpretation-section">
-          <h4>Interpretacao automatica</h4>
-          <div id="t-datasus-results" class="result-grid" style="margin-top:14px;"></div>
-        </section>
-      </div>
-
       <div class="tstudent-mode-panel active" data-mode-panel="manual">
         <section class="surface-card decorated">
           <div class="tstudent-step-head">
@@ -1572,7 +1498,7 @@ export async function renderTestModule(ctx) {
                 <h5>Importar arquivo</h5>
                 <span class="small-chip primary">CSV/XLSX/TXT</span>
               </div>
-              <p class="small-note">Aceita planilhas exportadas do Excel e formatos compativeis com DATASUS.</p>
+              <p class="small-note">Aceita planilhas exportadas do Excel, CSV, TXT e colagem tabulada de planilhas brasileiras.</p>
               <div class="tstudent-file-picker">
                 <label for="t-file" class="btn-secondary">Importar arquivo</label>
                 <input id="t-file" class="tstudent-hidden-file" type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
@@ -1714,17 +1640,17 @@ export async function renderTestModule(ctx) {
   };
 
   const datasusRefs = {
-    wizardEl: findInContainer(root, '#t-datasus-wizard', { label: 'wizard DATASUS' }),
-    analysisEl: findInContainer(root, '#t-datasus-analysis-step', { label: 'etapa de analise DATASUS' }),
-    selectionEl: findInContainer(root, '#t-datasus-selection-step', { label: 'etapa de selecao DATASUS' }),
-    derivedEl: findInContainer(root, '#t-datasus-derived', { label: 'previa derivada DATASUS' }),
+    wizardEl: findInContainer(root, '#t-datasus-wizard', { label: 'wizard DATASUS', optional: true }),
+    analysisEl: findInContainer(root, '#t-datasus-analysis-step', { label: 'etapa de analise DATASUS', optional: true }),
+    selectionEl: findInContainer(root, '#t-datasus-selection-step', { label: 'etapa de selecao DATASUS', optional: true }),
+    derivedEl: findInContainer(root, '#t-datasus-derived', { label: 'previa derivada DATASUS', optional: true }),
     contextEl: findInContainer(root, '#t-datasus-context', { label: 'pergunta DATASUS', optional: true }),
     alphaEl: findInContainer(root, '#t-datasus-alpha', { label: 'alpha DATASUS', optional: true }),
     runBtn: findInContainer(root, '#t-datasus-run', { label: 'botao rodar DATASUS', optional: true }),
-    statusEl: findInContainer(root, '#t-datasus-status', { label: 'status DATASUS' }),
-    metricsEl: findInContainer(root, '#t-datasus-metrics', { label: 'metricas DATASUS' }),
-    chartEl: findInContainer(root, '#t-datasus-chart', { label: 'grafico DATASUS' }),
-    resultsEl: findInContainer(root, '#t-datasus-results', { label: 'interpretacao DATASUS' })
+    statusEl: findInContainer(root, '#t-datasus-status', { label: 'status DATASUS', optional: true }),
+    metricsEl: findInContainer(root, '#t-datasus-metrics', { label: 'metricas DATASUS', optional: true }),
+    chartEl: findInContainer(root, '#t-datasus-chart', { label: 'grafico DATASUS', optional: true }),
+    resultsEl: findInContainer(root, '#t-datasus-results', { label: 'interpretacao DATASUS', optional: true })
   };
 
   const datasusState = {
@@ -2779,10 +2705,6 @@ export async function renderTestModule(ctx) {
     });
   }
 
-  safeBindAll(root, '.tstudent-mode-btn', 'click', event => {
-    setActiveModePanel(event.currentTarget.dataset.modeTarget);
-  }, { label: 'alternancia entre paineis do modulo' });
-
   safeBindAll(root, '[data-manual-analysis]', 'click', event => {
     setManualAnalysisMode(event.currentTarget.dataset.manualAnalysis);
   }, { label: 'alternancia entre modos do t manual' });
@@ -2807,21 +2729,8 @@ export async function renderTestModule(ctx) {
   safeBind(root, '#t-paste-data', 'input', handlePastedTextInput, { label: 'area de dados colados', optional: true });
   safeBind(root, '#t-file', 'change', handleManualFile, { label: 'upload manual', optional: true });
 
-  safeBind(root, '#t-datasus-context', 'input', () => {
-    invalidateDatasusResults('Texto interpretativo atualizado. Rode novamente para refletir a nova pergunta.');
-  }, { label: 'pergunta DATASUS', optional: true });
-  safeBind(root, '#t-datasus-alpha', 'change', () => {
-    invalidateDatasusResults('Nivel de significancia atualizado. Rode novamente para recalcular a leitura final.');
-  }, { label: 'alpha DATASUS', optional: true });
-  safeBind(root, '#t-datasus-run', 'click', runDatasusAnalysis, { label: 'botao rodar DATASUS', optional: true });
-
   refreshManualPreview();
   invalidateManualResults('Importe um arquivo, cole uma tabela ou edite os grupos para iniciar.');
-  mountWizard();
-  renderDatasusAnalysis();
-  renderDatasusSelection();
-  renderDatasusDerived();
-  invalidateDatasusResults('Aguardando base derivada valida.');
   } catch (error) {
     console.error('[t-student] Falha ao renderizar o modulo t de Student.', error);
     root.innerHTML = `
