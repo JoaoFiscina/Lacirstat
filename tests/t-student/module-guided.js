@@ -27,6 +27,14 @@ const MANUAL_HEADER_ALIASES = {
   grupo_b: ['grupo_b', 'grupo b', 'grupo2', 'grupo_2', 'grupo 2'],
   observacao_opcional: ['observacao', 'observacao opcional', 'obs', 'comentario', 'comentario opcional']
 };
+const MANUAL_POSITION_FALLBACK = {
+  keysByIndex: ['unidade', 'grupo_a', 'grupo_b', 'observacao_opcional'],
+  minColumns: 3,
+  requiredKeys: ['grupo_a', 'grupo_b'],
+  introText: 'Nao reconhecemos os nomes padrao das colunas, entao usamos a estrutura por posicao da planilha.',
+  assumptionText: 'Assumimos: 1a coluna = identificacao, 2a = grupo A, 3a = grupo B.',
+  headerText: 'Os nomes do cabecalho foram aproveitados automaticamente na interface.'
+};
 const MANUAL_WIDE_EXAMPLE_ROWS = [
   ['Rondonia', '2,2', '2,2', ''],
   ['Acre', '3', '3,3', ''],
@@ -259,7 +267,39 @@ function buildEmptyManualDataset(mode, sourceKind = 'quick', sourceLabel = 'Edic
     infos: [],
     rawRows: 0,
     recognizedColumns: {},
-    fileMeta: null
+    fileMeta: null,
+    displayLabels: {
+      unit: 'Unidade',
+      groupA: 'Grupo A',
+      groupB: 'Grupo B',
+      observation: 'Observacao',
+      groupAWithRole: 'Grupo A',
+      groupBWithRole: 'Grupo B'
+    }
+  };
+}
+
+function buildManualDisplayLabels(recognizedColumns = {}) {
+  const isCustomHeader = (header, aliases) => {
+    const normalized = normalizeManualToken(header);
+    if (!normalized) return false;
+    return !(aliases || []).some(alias => normalizeManualToken(alias) === normalized);
+  };
+
+  const rawUnit = recognizedColumns.unidade?.header || '';
+  const rawGroupA = recognizedColumns.grupo_a?.header || '';
+  const rawGroupB = recognizedColumns.grupo_b?.header || '';
+  const rawObservation = recognizedColumns.observacao_opcional?.header || '';
+  const groupA = isCustomHeader(rawGroupA, MANUAL_HEADER_ALIASES.grupo_a) ? rawGroupA : 'Grupo A';
+  const groupB = isCustomHeader(rawGroupB, MANUAL_HEADER_ALIASES.grupo_b) ? rawGroupB : 'Grupo B';
+
+  return {
+    unit: isCustomHeader(rawUnit, MANUAL_HEADER_ALIASES.unidade) ? rawUnit : 'Unidade',
+    groupA,
+    groupB,
+    observation: isCustomHeader(rawObservation, MANUAL_HEADER_ALIASES.observacao_opcional) ? rawObservation : 'Observacao',
+    groupAWithRole: groupA !== 'Grupo A' ? `Grupo A (${groupA})` : 'Grupo A',
+    groupBWithRole: groupB !== 'Grupo B' ? `Grupo B (${groupB})` : 'Grupo B'
   };
 }
 
@@ -270,7 +310,8 @@ function buildManualDatasetFromStructuredRows(options, stats) {
     sourceLabel = 'Edicao por grupos',
     rows = [],
     recognizedColumns = {},
-    fileMeta = null
+    fileMeta = null,
+    displayLabels = buildManualDisplayLabels(recognizedColumns)
   } = options;
 
   const hasContent = rows.some(row => (
@@ -284,7 +325,8 @@ function buildManualDatasetFromStructuredRows(options, stats) {
     return {
       ...buildEmptyManualDataset(mode, sourceKind, sourceLabel),
       recognizedColumns,
-      fileMeta
+      fileMeta,
+      displayLabels
     };
   }
 
@@ -332,10 +374,10 @@ function buildManualDatasetFromStructuredRows(options, stats) {
           notes.push('Falta valor correspondente para formar o par.');
         }
         if (groupARaw && groupAValue === null) {
-          notes.push('grupo_a nao contem valor numerico valido.');
+          notes.push(`${displayLabels.groupA} nao contem valor numerico valido.`);
         }
         if (groupBRaw && groupBValue === null) {
-          notes.push('grupo_b nao contem valor numerico valido.');
+          notes.push(`${displayLabels.groupB} nao contem valor numerico valido.`);
         }
         if (!notes.length) {
           notes.push('Linha sem dois valores numericos utilizaveis.');
@@ -350,9 +392,9 @@ function buildManualDatasetFromStructuredRows(options, stats) {
         if (usedInA && usedInB) {
           statusLabel = 'Valida para os dois grupos';
         } else if (usedInA) {
-          statusLabel = 'Valida so para o Grupo A';
+          statusLabel = `Valida so para ${displayLabels.groupAWithRole}`;
         } else {
-          statusLabel = 'Valida so para o Grupo B';
+          statusLabel = `Valida so para ${displayLabels.groupBWithRole}`;
         }
 
         if (usedInA) {
@@ -365,19 +407,19 @@ function buildManualDatasetFromStructuredRows(options, stats) {
         }
 
         if (groupARaw && groupAValue === null) {
-          notes.push('grupo_a nao contem valor numerico valido.');
+          notes.push(`${displayLabels.groupA} nao contem valor numerico valido.`);
           ignoredByTextOrEmpty = true;
         }
         if (groupBRaw && groupBValue === null) {
-          notes.push('grupo_b nao contem valor numerico valido.');
+          notes.push(`${displayLabels.groupB} nao contem valor numerico valido.`);
           ignoredByTextOrEmpty = true;
         }
       } else {
         if (groupARaw && groupAValue === null) {
-          notes.push('grupo_a nao contem valor numerico valido.');
+          notes.push(`${displayLabels.groupA} nao contem valor numerico valido.`);
         }
         if (groupBRaw && groupBValue === null) {
-          notes.push('grupo_b nao contem valor numerico valido.');
+          notes.push(`${displayLabels.groupB} nao contem valor numerico valido.`);
         }
         if (!groupARaw && !groupBRaw) {
           notes.push('Linha vazia nas duas colunas de grupo.');
@@ -408,14 +450,14 @@ function buildManualDatasetFromStructuredRows(options, stats) {
 
   const errors = [];
   if (mode === 'paired') {
-    if (numericCounts.A < 2) errors.push('Grupo A tem menos de 2 observacoes validas.');
-    if (numericCounts.B < 2) errors.push('Grupo B tem menos de 2 observacoes validas.');
+    if (numericCounts.A < 2) errors.push(`${displayLabels.groupAWithRole} tem menos de 2 observacoes validas.`);
+    if (numericCounts.B < 2) errors.push(`${displayLabels.groupBWithRole} tem menos de 2 observacoes validas.`);
     if (numericCounts.A !== numericCounts.B || mismatchDetected) {
-      errors.push('No t pareado, Grupo A e Grupo B precisam ter o mesmo numero de linhas validas.');
+      errors.push(`No t pareado, ${displayLabels.groupAWithRole} e ${displayLabels.groupBWithRole} precisam ter o mesmo numero de linhas validas.`);
     }
   } else {
-    if (validCounts.A < 2) errors.push('Grupo A tem menos de 2 observacoes validas.');
-    if (validCounts.B < 2) errors.push('Grupo B tem menos de 2 observacoes validas.');
+    if (validCounts.A < 2) errors.push(`${displayLabels.groupAWithRole} tem menos de 2 observacoes validas.`);
+    if (validCounts.B < 2) errors.push(`${displayLabels.groupBWithRole} tem menos de 2 observacoes validas.`);
   }
 
   const warnings = [];
@@ -453,7 +495,8 @@ function buildManualDatasetFromStructuredRows(options, stats) {
     infos,
     rawRows: datasetRows.length,
     recognizedColumns,
-    fileMeta
+    fileMeta,
+    displayLabels
   };
 }
 
@@ -501,6 +544,84 @@ function matchManualColumns(headers) {
     recognizedColumns,
     duplicates,
     requiredFound: Boolean(recognizedColumns.grupo_a && recognizedColumns.grupo_b)
+  };
+}
+
+function manualCellLooksLikeHeader(value, stats) {
+  const normalized = normalizeManualSpaces(value);
+  if (!normalized) return false;
+  if (/[a-z\u00c0-\u024f]/i.test(normalized)) return true;
+  if (/[_-]/.test(normalized)) return true;
+  return parseManualNumericValue(normalized, stats) === null;
+}
+
+function buildManualPositionalRecognizedColumns(headers) {
+  const recognizedColumns = {};
+
+  for (let index = 0; index < Math.min(headers.length, MANUAL_POSITION_FALLBACK.keysByIndex.length); index += 1) {
+    const key = MANUAL_POSITION_FALLBACK.keysByIndex[index];
+    if (!key) continue;
+    recognizedColumns[key] = {
+      index,
+      header: normalizeManualSpaces(headers[index]) || `Coluna ${index + 1}`,
+      detection: 'position'
+    };
+  }
+
+  return recognizedColumns;
+}
+
+function manualRowLooksLikeFallbackHeader(headers, bodyRows, stats) {
+  const headerCells = headers
+    .slice(0, MANUAL_POSITION_FALLBACK.minColumns)
+    .map(value => normalizeManualSpaces(value))
+    .filter(Boolean);
+
+  if (headerCells.length < MANUAL_POSITION_FALLBACK.minColumns) return false;
+
+  const requiredPositions = MANUAL_POSITION_FALLBACK.requiredKeys
+    .map(key => MANUAL_POSITION_FALLBACK.keysByIndex.indexOf(key))
+    .filter(index => index >= 0);
+  const firstDataRow = bodyRows[0] || [];
+  const textualRequiredHeaders = requiredPositions.filter(index => manualCellLooksLikeHeader(headers[index], stats)).length;
+  const textualHeaderCount = headerCells.filter(value => manualCellLooksLikeHeader(value, stats)).length;
+  const firstRowHasNumericSignal = requiredPositions.some(index => parseManualNumericValue(firstDataRow[index], stats) !== null);
+
+  return textualRequiredHeaders === requiredPositions.length
+    || (textualHeaderCount >= Math.min(2, headerCells.length) && firstRowHasNumericSignal);
+}
+
+function buildManualFallbackCandidate(table, rowIndex, headers, bodyRows, stats) {
+  if (!manualRowLooksLikeFallbackHeader(headers, bodyRows, stats)) return null;
+
+  const recognizedColumns = buildManualPositionalRecognizedColumns(headers);
+  const compatibleCounts = { grupo_a: 0, grupo_b: 0 };
+
+  bodyRows.forEach(row => {
+    if (parseManualNumericValue(row[recognizedColumns.grupo_a.index], stats) !== null) compatibleCounts.grupo_a += 1;
+    if (parseManualNumericValue(row[recognizedColumns.grupo_b.index], stats) !== null) compatibleCounts.grupo_b += 1;
+  });
+
+  const minimumCompatibleRows = Math.min(2, Math.max(bodyRows.length, 1));
+  if (compatibleCounts.grupo_a < minimumCompatibleRows || compatibleCounts.grupo_b < minimumCompatibleRows) {
+    return null;
+  }
+
+  return {
+    table,
+    headers,
+    headerRowIndex: rowIndex,
+    bodyRows,
+    score: (Object.keys(recognizedColumns).length * 100) + ((compatibleCounts.grupo_a + compatibleCounts.grupo_b) * 10) - rowIndex,
+    numericRows: compatibleCounts.grupo_a + compatibleCounts.grupo_b,
+    recognizedColumns,
+    duplicates: [],
+    recognitionMode: 'position',
+    recognitionDetails: [
+      MANUAL_POSITION_FALLBACK.introText,
+      MANUAL_POSITION_FALLBACK.assumptionText,
+      MANUAL_POSITION_FALLBACK.headerText
+    ]
   };
 }
 
@@ -742,7 +863,7 @@ async function readWorkbookTablesFromFile(file, utils) {
 }
 
 function findBestWideTableCandidate(tables, stats) {
-  const candidates = (tables || []).map(table => {
+  const aliasCandidates = (tables || []).map(table => {
     const rows = (table.rows || []).filter(row => row.some(cell => normalizeManualSpaces(cell) !== ''));
 
     for (let rowIndex = 0; rowIndex < Math.min(rows.length, 20); rowIndex += 1) {
@@ -768,16 +889,38 @@ function findBestWideTableCandidate(tables, stats) {
         score,
         numericRows,
         recognizedColumns: headerMatch.recognizedColumns,
-        duplicates: headerMatch.duplicates
+        duplicates: headerMatch.duplicates,
+        recognitionMode: 'aliases',
+        recognitionDetails: []
       };
     }
 
     return null;
   }).filter(Boolean);
 
-  if (!candidates.length) return null;
-  candidates.sort((left, right) => right.score - left.score);
-  return candidates[0];
+  if (aliasCandidates.length) {
+    aliasCandidates.sort((left, right) => right.score - left.score);
+    return aliasCandidates[0];
+  }
+
+  const positionalCandidates = (tables || []).map(table => {
+    const rows = (table.rows || []).filter(row => row.some(cell => normalizeManualSpaces(cell) !== ''));
+
+    for (let rowIndex = 0; rowIndex < Math.min(rows.length, 20); rowIndex += 1) {
+      const headers = rows[rowIndex].map(value => normalizeManualSpaces(value));
+      const bodyRows = rows
+        .slice(rowIndex + 1)
+        .filter(row => row.some(cell => normalizeManualSpaces(cell) !== ''));
+      const candidate = buildManualFallbackCandidate(table, rowIndex, headers, bodyRows, stats);
+      if (candidate) return candidate;
+    }
+
+    return null;
+  }).filter(Boolean);
+
+  if (!positionalCandidates.length) return null;
+  positionalCandidates.sort((left, right) => right.score - left.score);
+  return positionalCandidates[0];
 }
 
 function analyzeManualNumericFormatting(bodyRows, recognizedColumns, stats) {
@@ -824,7 +967,10 @@ function buildLoadedTabularState(candidate, extra = {}, stats) {
     sheetNames: extra.sheetNames || [],
     decimalCommaDetected: formatting.decimalCommaDetected,
     numericCellCount: formatting.numericCellCount,
-    sourceType: extra.sourceType || 'file'
+    sourceType: extra.sourceType || 'file',
+    recognitionMode: candidate.recognitionMode || 'aliases',
+    usedPositionalFallback: candidate.recognitionMode === 'position',
+    recognitionDetails: candidate.recognitionDetails || []
   };
 }
 
@@ -840,9 +986,10 @@ async function readManualFileState(file, utils, stats) {
       return {
         status: 'error',
         fileName,
-        message: 'O arquivo foi lido, mas nao encontramos colunas compativeis com o formato padrao.',
+        message: 'O arquivo foi lido, mas nao conseguimos identificar as colunas automaticamente nem pela posicao.',
         details: [
           `Use o modelo: ${MANUAL_WIDE_FORMAT_LABEL}.`,
+          `Esperavamos pelo menos ${MANUAL_POSITION_FALLBACK.minColumns} colunas uteis com cabecalho na primeira linha.`,
           availableNames.length ? `Abas/blocos lidos: ${availableNames.join(', ')}.` : ''
         ].filter(Boolean)
       };
@@ -880,8 +1027,12 @@ function readManualPasteState(text, stats) {
     return {
       status: 'error',
       fileName: 'dados-colados',
-      message: `Nao encontramos colunas compativeis com o modelo: ${MANUAL_WIDE_FORMAT_LABEL}.`,
-      details: ['Cole a tabela com cabecalho no formato brasileiro ou use um arquivo CSV/XLSX/TXT compativel.'],
+      message: 'Nao conseguimos identificar as colunas automaticamente nem pela posicao.',
+      details: [
+        `Use o modelo: ${MANUAL_WIDE_FORMAT_LABEL}.`,
+        `Esperavamos pelo menos ${MANUAL_POSITION_FALLBACK.minColumns} colunas uteis com cabecalho na primeira linha.`,
+        'Cole a tabela com cabecalho no formato brasileiro ou use um arquivo CSV/XLSX/TXT compativel.'
+      ],
       sourceType: 'paste'
     };
   }
@@ -910,6 +1061,8 @@ function buildManualDatasetFromTabularState(fileState, mode, stats, sourceMeta =
     return dataset;
   }
 
+  const displayLabels = buildManualDisplayLabels(fileState.recognizedColumns);
+
   const mappedRows = fileState.bodyRows.map(row => ({
     unitRaw: fileState.recognizedColumns.unidade ? row[fileState.recognizedColumns.unidade.index] || '' : '',
     groupARaw: row[fileState.recognizedColumns.grupo_a.index] || '',
@@ -923,6 +1076,7 @@ function buildManualDatasetFromTabularState(fileState, mode, stats, sourceMeta =
     sourceLabel,
     rows: mappedRows,
     recognizedColumns: fileState.recognizedColumns,
+    displayLabels,
     fileMeta: {
       fileName: fileState.fileName,
       tableName: fileState.tableName,
@@ -935,6 +1089,9 @@ function buildManualDatasetFromTabularState(fileState, mode, stats, sourceMeta =
 
   if (!fileState.recognizedColumns.unidade) {
     dataset.infos.push('Coluna de unidade nao reconhecida; a previa usa a ordem das linhas.');
+  }
+  if (fileState.usedPositionalFallback) {
+    dataset.infos.push(...fileState.recognitionDetails);
   }
   if (fileState.duplicates.length) {
     dataset.warnings.push(`Cabecalhos duplicados foram ignorados: ${fileState.duplicates.join(', ')}.`);
@@ -959,19 +1116,20 @@ function buildManualPreviewTable(dataset, utils, limit = 14) {
   const formatConverted = value => (value === null || value === undefined
     ? '-'
     : utils.fmtNumber(value, Math.abs(value) >= 100 ? 1 : 3));
+  const labels = dataset.displayLabels || buildManualDisplayLabels(dataset.recognizedColumns);
 
   return `
     <div class="preview-table-wrap">
       <table class="preview-table tstudent-manual-preview-table">
         <thead>
           <tr>
-            <th>Unidade</th>
-            <th>grupo_a bruto</th>
-            <th>grupo_b bruto</th>
-            <th>grupo_a convertido</th>
-            <th>grupo_b convertido</th>
+            <th>${utils.escapeHtml(labels.unit)}</th>
+            <th>${utils.escapeHtml(labels.groupA)} bruto</th>
+            <th>${utils.escapeHtml(labels.groupB)} bruto</th>
+            <th>${utils.escapeHtml(labels.groupA)} convertido</th>
+            <th>${utils.escapeHtml(labels.groupB)} convertido</th>
             <th>Status</th>
-            <th>Observacao</th>
+            <th>${utils.escapeHtml(labels.observation)}</th>
           </tr>
         </thead>
         <tbody>
@@ -1012,10 +1170,10 @@ function buildRecognizedColumnsChips(recognizedColumns) {
     .join('');
 }
 
-function buildManualPairedInterpretation(result, alpha, question, utils) {
+function buildManualPairedInterpretation(result, alpha, question, groupLabels, utils) {
   return buildGuidedInterpretation(result, {
     mode: 'paired',
-    groupLabels: ['Grupo A', 'Grupo B'],
+    groupLabels,
     periodLabel: 'informado manualmente'
   }, alpha, question, utils);
 }
@@ -1858,14 +2016,14 @@ export async function renderTestModule(ctx) {
     `;
     manual.groupSummaryEl.innerHTML = `
       <div class="metric-card">
-        <div class="metric-label">Grupo A validos</div>
+        <div class="metric-label">${utils.escapeHtml(dataset.displayLabels.groupAWithRole)} validos</div>
         <div class="metric-value">${dataset.validCounts.A}</div>
-        <div class="metric-mini">${dataset.mode === 'paired' ? 'pares mantidos no Grupo A' : 'observacoes usadas no Grupo A'}</div>
+        <div class="metric-mini">${utils.escapeHtml(dataset.mode === 'paired' ? `pares mantidos em ${dataset.displayLabels.groupAWithRole}` : `observacoes usadas em ${dataset.displayLabels.groupAWithRole}`)}</div>
       </div>
       <div class="metric-card">
-        <div class="metric-label">Grupo B validos</div>
+        <div class="metric-label">${utils.escapeHtml(dataset.displayLabels.groupBWithRole)} validos</div>
         <div class="metric-value">${dataset.validCounts.B}</div>
-        <div class="metric-mini">${dataset.mode === 'paired' ? 'pares mantidos no Grupo B' : 'observacoes usadas no Grupo B'}</div>
+        <div class="metric-mini">${utils.escapeHtml(dataset.mode === 'paired' ? `pares mantidos em ${dataset.displayLabels.groupBWithRole}` : `observacoes usadas em ${dataset.displayLabels.groupBWithRole}`)}</div>
       </div>
       <div class="metric-card">
         <div class="metric-label">${dataset.mode === 'paired' ? 'Pares mantidos' : 'Linhas ignoradas'}</div>
@@ -1885,7 +2043,7 @@ export async function renderTestModule(ctx) {
   function runManualAnalysis() {
     const dataset = refreshManualPreview();
     const alpha = Number(manual.alphaEl.value || 0.05);
-    const labels = ['Grupo A', 'Grupo B'];
+    const labels = [dataset.displayLabels.groupA, dataset.displayLabels.groupB];
 
     if (!dataset.hasContent) {
       renderAnalysisError(manual.statusEl, manual.metricsEl, manual.chartEl, manual.resultsEl, 'Importe um arquivo, cole uma tabela ou preencha os grupos antes de rodar o teste.');
@@ -1927,7 +2085,7 @@ export async function renderTestModule(ctx) {
     `;
     manual.chartEl.innerHTML = buildResultChartsHtml(result, labels, dataset.vectors.A, dataset.vectors.B, stats, utils);
     manual.resultsEl.innerHTML = manualState.analysisMode === 'paired'
-      ? buildManualPairedInterpretation(result, alpha, manual.contextEl.value || defaultManualQuestion, utils)
+      ? buildManualPairedInterpretation(result, alpha, manual.contextEl.value || defaultManualQuestion, labels, utils)
       : buildManualInterpretation(result, alpha, labels, manual.contextEl.value || defaultManualQuestion, utils);
   }
 

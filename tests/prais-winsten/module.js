@@ -27,11 +27,23 @@ const PRAIS_RECOGNIZED_ORDER = [
   { key: 'variavel_y', label: 'variavel_y' },
   { key: 'observacao_opcional', label: 'observacao_opcional' }
 ];
+const PRAIS_POSITION_FALLBACK = {
+  keysByIndex: ['id', 'tempo', 'variavel_y', 'observacao_opcional'],
+  minColumns: 3,
+  requiredKeys: ['tempo', 'variavel_y'],
+  introText: 'Nao reconhecemos os nomes padrao das colunas, entao usamos a estrutura por posicao da planilha.',
+  assumptionText: 'Assumimos: 1a coluna = identificacao, 2a = tempo, 3a = variavel y.',
+  headerText: 'Os nomes do cabecalho foram aproveitados automaticamente na interface.',
+  compatibilityValidators: {
+    tempo: (raw, runtimeStats) => parseTemporalValue(raw, runtimeStats).numeric !== null
+  }
+};
 const PRAIS_TABULAR_OPTIONS = {
   aliases: PRAIS_HEADER_ALIASES,
-  requiredKeys: [],
+  requiredKeys: ['tempo', 'variavel_y'],
   numericKeys: ['tempo', 'variavel_y'],
-  expectedFormatLabel: PRAIS_FORMAT_LABEL
+  expectedFormatLabel: PRAIS_FORMAT_LABEL,
+  positionFallback: PRAIS_POSITION_FALLBACK
 };
 const MIN_TEMPORAL_POINTS = 5;
 
@@ -381,6 +393,9 @@ function buildPraisDatasetFromTabularState(fileState, stats, sourceMeta = {}) {
   if (fileState.decimalCommaDetected) {
     dataset.infos.push('Números com vírgula decimal foram convertidos automaticamente.');
   }
+  if (fileState.usedPositionalFallback) {
+    dataset.infos.push(...fileState.recognitionDetails);
+  }
 
   if (recognizedColumns.tempo) {
     dataset.infos.push(`A coluna de tempo foi reconhecida como: ${recognizedColumns.tempo.header}.`);
@@ -427,17 +442,20 @@ function buildPraisDatasetFromTabularState(fileState, stats, sourceMeta = {}) {
 
 function buildPraisPreviewTable(dataset, utils, limit = 14) {
   const rows = dataset.rows.slice(0, limit);
+  const idHeader = dataset.previewHeaders?.id || 'id';
+  const timeHeader = dataset.previewHeaders?.tempo || 'tempo';
+  const yHeader = dataset.previewHeaders?.y || 'variavel_y';
 
   return `
     <div class="preview-table-wrap">
       <table class="preview-table prais-preview-table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Tempo bruto</th>
-            <th>Y bruto</th>
-            <th>Tempo convertido</th>
-            <th>Y convertido</th>
+            <th>${utils.escapeHtml(idHeader)}</th>
+            <th>${utils.escapeHtml(timeHeader)} bruto</th>
+            <th>${utils.escapeHtml(yHeader)} bruto</th>
+            <th>${utils.escapeHtml(timeHeader)} convertido</th>
+            <th>${utils.escapeHtml(yHeader)} convertido</th>
             <th>Status</th>
           </tr>
         </thead>

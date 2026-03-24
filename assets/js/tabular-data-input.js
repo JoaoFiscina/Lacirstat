@@ -210,6 +210,138 @@ export function buildRecognizedColumnsChips(recognizedColumns, order = []) {
     .join('');
 }
 
+function cellLooksLikeHeader(value, stats) {
+  const normalized = normalizeTabularSpaces(value);
+  if (!normalized) return false;
+  if (/[a-z\u00c0-\u024f]/i.test(normalized)) return true;
+  if (/[_-]/.test(normalized)) return true;
+  return parseTabularNumber(normalized, stats) === null;
+}
+
+function cellMatchesExpectedType(raw, key, positionFallback, stats) {
+  const normalized = normalizeTabularSpaces(raw);
+  if (!normalized) return false;
+
+  const validator = positionFallback?.compatibilityValidators?.[key];
+  if (typeof validator === 'function') {
+    return Boolean(validator(normalized, stats));
+  }
+
+  return parseTabularNumber(normalized, stats) !== null;
+}
+
+function buildPositionalRecognizedColumns(headers, positionFallback) {
+  const recognizedColumns = {};
+  const keysByIndex = positionFallback?.keysByIndex || [];
+
+  for (let index = 0; index < Math.min(headers.length, keysByIndex.length); index += 1) {
+    const key = keysByIndex[index];
+    if (!key) continue;
+    recognizedColumns[key] = {
+      index,
+      header: normalizeTabularSpaces(headers[index]) || `Coluna ${index + 1}`,
+      detection: 'position'
+    };
+  }
+
+  return recognizedColumns;
+}
+
+function rowLooksLikeFallbackHeader(headers, bodyRows, positionFallback, stats) {
+  const minColumns = positionFallback?.minColumns || 3;
+  const headerCells = headers
+    .slice(0, minColumns)
+    .map(value => normalizeTabularSpaces(value))
+    .filter(Boolean);
+
+  if (headerCells.length < minColumns) return false;
+
+  const requiredKeys = positionFallback?.requiredKeys || [];
+  const requiredPositions = requiredKeys
+    .map(key => (positionFallback?.keysByIndex || []).indexOf(key))
+    .filter(index => index >= 0);
+
+  if (!requiredPositions.length) return false;
+
+  const firstDataRow = bodyRows[0] || [];
+  const textualRequiredHeaders = requiredPositions.filter(index => cellLooksLikeHeader(headers[index], stats)).length;
+  const textualHeaderCount = headerCells.filter(value => cellLooksLikeHeader(value, stats)).length;
+  const firstRowHasCompatibleData = requiredPositions.some(index => {
+    const key = positionFallback.keysByIndex[index];
+    return cellMatchesExpectedType(firstDataRow[index], key, positionFallback, stats);
+  });
+
+  return textualRequiredHeaders === requiredPositions.length
+    || (textualHeaderCount >= Math.min(2, headerCells.length) && firstRowHasCompatibleData);
+}
+
+function buildFallbackRecognitionDetails(positionFallback) {
+  const details = [];
+
+  if (positionFallback?.introText) details.push(positionFallback.introText);
+  if (positionFallback?.assumptionText) details.push(positionFallback.assumptionText);
+  if (positionFallback?.headerText) details.push(positionFallback.headerText);
+
+  return details;
+}
+
+function buildPositionalFallbackCandidate(table, rowIndex, headers, bodyRows, options, stats) {
+  const positionFallback = options?.positionFallback;
+  if (!positionFallback) return null;
+  if (!rowLooksLikeFallbackHeader(headers, bodyRows, positionFallback, stats)) return null;
+
+  const recognizedColumns = buildPositionalRecognizedColumns(headers, positionFallback);
+  const requiredKeys = positionFallback.requiredKeys || options?.requiredKeys || [];
+  if (!requiredKeys.every(key => Boolean(recognizedColumns[key]))) return null;
+
+  const compatibilityCounts = Object.fromEntries(requiredKeys.map(key => [key, 0]));
+  bodyRows.forEach(row => {
+    requiredKeys.forEach(key => {
+      const index = recognizedColumns[key]?.index;
+      if (!Number.isInteger(index)) return;
+      if (cellMatchesExpectedType(row[index], key, positionFallback, stats)) {
+        compatibilityCounts[key] += 1;
+      }
+    });
+  });
+
+  const minimumCompatibleRows = Math.min(2, Math.max(bodyRows.length, 1));
+  if (!requiredKeys.every(key => compatibilityCounts[key] >= minimumCompatibleRows)) {
+    return null;
+  }
+
+  const compatibilityScore = Object.values(compatibilityCounts).reduce((sum, value) => sum + value, 0);
+
+  return {
+    table,
+    headers,
+    headerRowIndex: rowIndex,
+    bodyRows,
+    score: (Object.keys(recognizedColumns).length * 100) + (compatibilityScore * 10) - rowIndex,
+    numericRows: compatibilityScore,
+    recognizedColumns,
+    duplicates: [],
+    recognitionMode: 'position',
+    recognitionDetails: buildFallbackRecognitionDetails(positionFallback)
+  };
+}
+
+function buildTabularRecognitionError(expectedFormatLabel, positionFallback, availableNames = [], sourceLabel = 'arquivo') {
+  const minColumns = positionFallback?.minColumns || 3;
+  const message = positionFallback
+    ? `O ${sourceLabel} foi lido, mas nao conseguimos identificar as colunas automaticamente nem pela posicao.`
+    : `O ${sourceLabel} foi lido, mas nao encontramos colunas compativeis com o modelo: ${expectedFormatLabel}.`;
+
+  return {
+    message,
+    details: [
+      `Use o modelo: ${expectedFormatLabel}.`,
+      positionFallback ? `Esperavamos pelo menos ${minColumns} colunas uteis com cabecalho na primeira linha.` : '',
+      availableNames.length ? `Abas/blocos lidos: ${availableNames.join(', ')}.` : ''
+    ].filter(Boolean)
+  };
+}
+
 function xmlNodes(node, localName) {
   return Array.from(node.getElementsByTagName('*')).filter(item => item.localName === localName);
 }
@@ -423,10 +555,11 @@ export function findBestTabularCandidate(tables, options, stats) {
   const {
     aliases = {},
     requiredKeys = [],
-    numericKeys = []
+    numericKeys = [],
+    positionFallback = null
   } = options || {};
 
-  const candidates = (tables || []).map(table => {
+  const aliasCandidates = (tables || []).map(table => {
     const rows = (table.rows || []).filter(row => row.some(cell => normalizeTabularSpaces(cell) !== ''));
 
     for (let rowIndex = 0; rowIndex < Math.min(rows.length, 20); rowIndex += 1) {
@@ -455,16 +588,46 @@ export function findBestTabularCandidate(tables, options, stats) {
         score,
         numericRows,
         recognizedColumns: headerMatch.recognizedColumns,
-        duplicates: headerMatch.duplicates
+        duplicates: headerMatch.duplicates,
+        recognitionMode: 'aliases',
+        recognitionDetails: []
       };
     }
 
     return null;
   }).filter(Boolean);
 
-  if (!candidates.length) return null;
-  candidates.sort((left, right) => right.score - left.score);
-  return candidates[0];
+  if (aliasCandidates.length) {
+    aliasCandidates.sort((left, right) => right.score - left.score);
+    return aliasCandidates[0];
+  }
+
+  if (!positionFallback) return null;
+
+  const positionalCandidates = (tables || []).map(table => {
+    const rows = (table.rows || []).filter(row => row.some(cell => normalizeTabularSpaces(cell) !== ''));
+
+    for (let rowIndex = 0; rowIndex < Math.min(rows.length, 20); rowIndex += 1) {
+      const headers = rows[rowIndex].map(value => normalizeTabularSpaces(value));
+      const bodyRows = rows
+        .slice(rowIndex + 1)
+        .filter(row => row.some(cell => normalizeTabularSpaces(cell) !== ''));
+
+      const candidate = buildPositionalFallbackCandidate(table, rowIndex, headers, bodyRows, {
+        aliases,
+        requiredKeys,
+        numericKeys,
+        positionFallback
+      }, stats);
+      if (candidate) return candidate;
+    }
+
+    return null;
+  }).filter(Boolean);
+
+  if (!positionalCandidates.length) return null;
+  positionalCandidates.sort((left, right) => right.score - left.score);
+  return positionalCandidates[0];
 }
 
 function analyzeNumericFormatting(bodyRows, recognizedColumns, numericKeys, stats) {
@@ -510,7 +673,10 @@ function buildLoadedTabularState(candidate, extra, numericKeys, stats) {
     sheetNames: extra.sheetNames || [],
     decimalCommaDetected: formatting.decimalCommaDetected,
     numericCellCount: formatting.numericCellCount,
-    sourceType: extra.sourceType || 'file'
+    sourceType: extra.sourceType || 'file',
+    recognitionMode: candidate.recognitionMode || 'aliases',
+    usedPositionalFallback: candidate.recognitionMode === 'position',
+    recognitionDetails: candidate.recognitionDetails || []
   };
 }
 
@@ -519,24 +685,28 @@ export async function readTabularFileState(file, utils, stats, options = {}) {
     aliases = {},
     requiredKeys = [],
     numericKeys = [],
-    expectedFormatLabel = ''
+    expectedFormatLabel = '',
+    positionFallback = null
   } = options;
   const fileName = normalizeTabularSpaces(file?.name || 'arquivo');
 
   try {
     const workbook = await readWorkbookTablesFromFile(file, utils);
-    const candidate = findBestTabularCandidate(workbook.tables, { aliases, requiredKeys, numericKeys }, stats);
+    const candidate = findBestTabularCandidate(workbook.tables, {
+      aliases,
+      requiredKeys,
+      numericKeys,
+      positionFallback
+    }, stats);
     const availableNames = workbook.tables.map(table => table.name).filter(Boolean);
 
     if (!candidate) {
+      const errorInfo = buildTabularRecognitionError(expectedFormatLabel, positionFallback, availableNames, 'arquivo');
       return {
         status: 'error',
         fileName,
-        message: `O arquivo foi lido, mas nao encontramos colunas compativeis com o modelo: ${expectedFormatLabel}.`,
-        details: [
-          `Use o modelo: ${expectedFormatLabel}.`,
-          availableNames.length ? `Abas/blocos lidos: ${availableNames.join(', ')}.` : ''
-        ].filter(Boolean)
+        message: errorInfo.message,
+        details: errorInfo.details
       };
     }
 
@@ -564,7 +734,8 @@ export function readTabularPasteState(text, stats, options = {}) {
     aliases = {},
     requiredKeys = [],
     numericKeys = [],
-    expectedFormatLabel = ''
+    expectedFormatLabel = '',
+    positionFallback = null
   } = options;
   const parsed = parseDelimitedRows(text);
   const candidate = findBestTabularCandidate([{
@@ -572,14 +743,23 @@ export function readTabularPasteState(text, stats, options = {}) {
     rows: parsed.rows,
     delimiter: parsed.delimiter,
     formatLabel: parsed.formatLabel
-  }], { aliases, requiredKeys, numericKeys }, stats);
+  }], {
+    aliases,
+    requiredKeys,
+    numericKeys,
+    positionFallback
+  }, stats);
 
   if (!candidate) {
+    const errorInfo = buildTabularRecognitionError(expectedFormatLabel, positionFallback, [], 'conteudo colado');
     return {
       status: 'error',
       fileName: 'dados-colados',
-      message: `Nao encontramos colunas compativeis com o modelo: ${expectedFormatLabel}.`,
-      details: ['Cole a tabela com cabecalho no formato esperado ou use um arquivo CSV/XLSX/TXT compativel.'],
+      message: errorInfo.message,
+      details: [
+        ...errorInfo.details,
+        'Cole a tabela com cabecalho no formato esperado ou use um arquivo CSV/XLSX/TXT compativel.'
+      ],
       sourceType: 'paste'
     };
   }

@@ -29,6 +29,21 @@ const CORRELATION_RECOGNIZED_ORDER = [
   { key: 'variavel_y', label: 'variavel_y' },
   { key: 'observacao_opcional', label: 'observacao_opcional' }
 ];
+const CORRELATION_POSITION_FALLBACK = {
+  keysByIndex: ['id', 'variavel_x', 'variavel_y', 'observacao_opcional'],
+  minColumns: 3,
+  requiredKeys: ['variavel_x', 'variavel_y'],
+  introText: 'Nao reconhecemos os nomes padrao das colunas, entao usamos a estrutura por posicao da planilha.',
+  assumptionText: 'Assumimos: 1a coluna = identificacao, 2a = variavel x, 3a = variavel y.',
+  headerText: 'Os nomes do cabecalho foram aproveitados automaticamente na interface.'
+};
+const CORRELATION_TABULAR_OPTIONS = {
+  aliases: CORRELATION_HEADER_ALIASES,
+  requiredKeys: ['variavel_x', 'variavel_y'],
+  numericKeys: ['variavel_x', 'variavel_y'],
+  expectedFormatLabel: CORRELATION_FORMAT_LABEL,
+  positionFallback: CORRELATION_POSITION_FALLBACK
+};
 const CORRELATION_EXAMPLE_ROWS = [
   ['UF1', '12,3', '45,2', ''],
   ['UF2', '14,1', '43,8', ''],
@@ -174,6 +189,11 @@ function buildEmptyCorrelationDataset(sourceKind = 'paste', sourceLabel = 'Dados
     y: [],
     labels: [],
     headers: ['variavel_x', 'variavel_y'],
+    previewHeaders: {
+      id: 'id',
+      x: 'variavel_x',
+      y: 'variavel_y'
+    },
     recognizedColumns: {},
     errors: [],
     warnings: [],
@@ -197,6 +217,11 @@ function buildCorrelationDatasetFromTabularState(fileState, stats, sourceMeta = 
   }
 
   const recognizedColumns = fileState.recognizedColumns || {};
+  const previewHeaders = {
+    id: recognizedColumns.id?.header || 'id',
+    x: recognizedColumns.variavel_x?.header || 'variavel_x',
+    y: recognizedColumns.variavel_y?.header || 'variavel_y'
+  };
   const mappedRows = fileState.bodyRows.map((row, index) => ({
     index: index + 1,
     idRaw: recognizedColumns.id ? row[recognizedColumns.id.index] || '' : '',
@@ -216,6 +241,7 @@ function buildCorrelationDatasetFromTabularState(fileState, stats, sourceMeta = 
     return {
       ...buildEmptyCorrelationDataset(sourceKind, sourceLabel),
       recognizedColumns,
+      previewHeaders,
       fileMeta: {
         fileName: fileState.fileName,
         tableName: fileState.tableName,
@@ -287,6 +313,7 @@ function buildCorrelationDatasetFromTabularState(fileState, stats, sourceMeta = 
   if (fileState.delimiter === ';') infos.push(`${sourceKind === 'file' ? 'Arquivo' : 'Conteudo colado'} lido no padrao ponto e virgula (;).`);
   else if (fileState.delimiter === '\t') infos.push('Conteudo tabulado do Excel interpretado automaticamente.');
   if (fileState.decimalCommaDetected) infos.push('Numeros com virgula decimal foram convertidos automaticamente.');
+  if (fileState.usedPositionalFallback) infos.push(...fileState.recognitionDetails);
   infos.push('ID e apenas rotulo; variavel_x e variavel_y entram no calculo.');
   if (!recognizedColumns.id) infos.push('Coluna de ID nao reconhecida; a previa usa a ordem das linhas como referencia.');
   if (fileState.duplicates.length) warnings.push(`Cabecalhos duplicados foram ignorados: ${fileState.duplicates.join(', ')}.`);
@@ -302,9 +329,10 @@ function buildCorrelationDatasetFromTabularState(fileState, stats, sourceMeta = 
     y,
     labels,
     headers: [
-      recognizedColumns.variavel_x?.header || 'variavel_x',
-      recognizedColumns.variavel_y?.header || 'variavel_y'
+      previewHeaders.x,
+      previewHeaders.y
     ],
+    previewHeaders,
     recognizedColumns,
     errors: [],
     warnings,
@@ -342,17 +370,20 @@ function buildCorrelationPreviewTable(dataset, utils, limit = 14) {
       ? '-'
       : utils.fmtNumber(value, Math.abs(value) >= 100 ? 1 : 3)
   );
+  const idHeader = dataset.previewHeaders?.id || 'id';
+  const xHeader = dataset.previewHeaders?.x || 'variavel_x';
+  const yHeader = dataset.previewHeaders?.y || 'variavel_y';
 
   return `
     <div class="preview-table-wrap">
       <table class="preview-table correlation-preview-table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>X bruto</th>
-            <th>Y bruto</th>
-            <th>X convertido</th>
-            <th>Y convertido</th>
+            <th>${utils.escapeHtml(idHeader)}</th>
+            <th>${utils.escapeHtml(xHeader)} bruto</th>
+            <th>${utils.escapeHtml(yHeader)} bruto</th>
+            <th>${utils.escapeHtml(xHeader)} convertido</th>
+            <th>${utils.escapeHtml(yHeader)} convertido</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -778,12 +809,7 @@ export async function renderTestModule(ctx) {
       if (!file) return;
       els.fileName.textContent = file.name || 'Arquivo selecionado';
       setIntakeStatus('status', 'Lendo arquivo...');
-      const fileState = await readTabularFileState(file, utils, stats, {
-        aliases: CORRELATION_HEADER_ALIASES,
-        requiredKeys: ['variavel_x', 'variavel_y'],
-        numericKeys: ['variavel_x', 'variavel_y'],
-        expectedFormatLabel: CORRELATION_FORMAT_LABEL
-      });
+      const fileState = await readTabularFileState(file, utils, stats, CORRELATION_TABULAR_OPTIONS);
       const dataset = buildCorrelationDatasetFromTabularState(fileState, stats, {
         sourceKind: 'file',
         sourceLabel: 'Arquivo importado'
@@ -807,12 +833,7 @@ export async function renderTestModule(ctx) {
         return state.dataset;
       }
 
-      const fileState = readTabularPasteState(els.paste.value, stats, {
-        aliases: CORRELATION_HEADER_ALIASES,
-        requiredKeys: ['variavel_x', 'variavel_y'],
-        numericKeys: ['variavel_x', 'variavel_y'],
-        expectedFormatLabel: CORRELATION_FORMAT_LABEL
-      });
+      const fileState = readTabularPasteState(els.paste.value, stats, CORRELATION_TABULAR_OPTIONS);
       const dataset = buildCorrelationDatasetFromTabularState(fileState, stats, {
         sourceKind: 'paste',
         sourceLabel: 'Dados colados'
