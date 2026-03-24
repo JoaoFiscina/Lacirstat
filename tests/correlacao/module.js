@@ -244,9 +244,21 @@ function buildRankComparisonTable(dataset, rankSummary, utils, limit = 10) {
 
 function compareMessage(pearson, spearman) {
   const gap = Math.abs(Math.abs(pearson.coef) - Math.abs(spearman.coef));
-  if (gap > 0.2) return 'Pearson e Spearman divergiram de forma relevante, sugerindo cautela por possivel nao linearidade ou influencia de valores extremos.';
-  if (gap > 0.12) return 'Pearson e Spearman diferiram moderadamente; vale revisar a tabela de pontos influentes e os possiveis outliers.';
-  return 'Pearson e Spearman foram consistentes, indicando uma tendencia estavel na associacao.';
+  const pearsonDir = Math.sign(pearson.coef || 0);
+  const spearmanDir = Math.sign(spearman.coef || 0);
+  if (pearsonDir && spearmanDir && pearsonDir !== spearmanDir) {
+    return 'Pearson e Spearman apontaram direcoes diferentes, sinal de estrutura instavel ou alta sensibilidade a pontos extremos.';
+  }
+  if ((Math.abs(spearman.coef) - Math.abs(pearson.coef)) > 0.18) {
+    return 'Spearman ficou substancialmente maior que Pearson, sugerindo relacao monotona com curvatura ou compressao nos extremos.';
+  }
+  if ((Math.abs(pearson.coef) - Math.abs(spearman.coef)) > 0.18) {
+    return 'Pearson ficou acima de Spearman, indicando que a reta linear parece forte, mas a ordenacao relativa nao foi tao estavel quanto a inclinacao sugere.';
+  }
+  if (gap > 0.12) {
+    return 'Pearson e Spearman diferiram moderadamente; vale revisar linearidade, residuos e possiveis outliers antes de interpretar.';
+  }
+  return 'Pearson e Spearman foram semelhantes, sugerindo que a associacao monotona esta proxima de uma leitura linear.';
 }
 
 function correlationMetricCard(label, value, note, extraClass = '') {
@@ -604,6 +616,542 @@ function buildInfluenceTable(dataset, pearson, outlierFlags, utils, limit = 6) {
         </tbody>
       </table>
     </div>
+  `;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatPValue(p, utils) {
+  if (!Number.isFinite(p)) return 'n/d';
+  return p < 0.001 ? '< 0,001' : utils.fmtP(p);
+}
+
+function formatCi(ci, utils, digits = 3) {
+  if (!Array.isArray(ci) || ci.length < 2 || !ci.every(Number.isFinite)) return 'IC95% indisponivel';
+  return `${utils.fmtNumber(ci[0], digits)} a ${utils.fmtNumber(ci[1], digits)}`;
+}
+
+function buildTickValues(min, max, count = 5) {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0];
+  if (min === max) return [min - 1, min, min + 1];
+  const step = (max - min) / (count - 1);
+  return Array.from({ length: count }, (_, index) => min + (step * index));
+}
+
+function solveLinearSystem(matrix, vector) {
+  const n = vector.length;
+  const augmented = matrix.map((row, rowIndex) => [...row, vector[rowIndex]]);
+
+  for (let col = 0; col < n; col += 1) {
+    let pivot = col;
+    for (let row = col + 1; row < n; row += 1) {
+      if (Math.abs(augmented[row][col]) > Math.abs(augmented[pivot][col])) pivot = row;
+    }
+
+    if (Math.abs(augmented[pivot][col]) < 1e-12) return null;
+    if (pivot !== col) {
+      [augmented[col], augmented[pivot]] = [augmented[pivot], augmented[col]];
+    }
+
+    const divisor = augmented[col][col];
+    for (let cursor = col; cursor <= n; cursor += 1) {
+      augmented[col][cursor] /= divisor;
+    }
+
+    for (let row = 0; row < n; row += 1) {
+      if (row === col) continue;
+      const factor = augmented[row][col];
+      for (let cursor = col; cursor <= n; cursor += 1) {
+        augmented[row][cursor] -= factor * augmented[col][cursor];
+      }
+    }
+  }
+
+  return augmented.map(row => row[n]);
+}
+
+function fitQuadraticTrend(x, y) {
+  if (x.length < 5) return null;
+  const sums = {
+    s0: x.length,
+    s1: 0,
+    s2: 0,
+    s3: 0,
+    s4: 0,
+    sy: 0,
+    sxy: 0,
+    sx2y: 0
+  };
+
+  for (let index = 0; index < x.length; index += 1) {
+    const x1 = x[index];
+    const x2 = x1 * x1;
+    sums.s1 += x1;
+    sums.s2 += x2;
+    sums.s3 += x2 * x1;
+    sums.s4 += x2 * x2;
+    sums.sy += y[index];
+    sums.sxy += x1 * y[index];
+    sums.sx2y += x2 * y[index];
+  }
+
+  const coefficients = solveLinearSystem(
+    [
+      [sums.s0, sums.s1, sums.s2],
+      [sums.s1, sums.s2, sums.s3],
+      [sums.s2, sums.s3, sums.s4]
+    ],
+    [sums.sy, sums.sxy, sums.sx2y]
+  );
+  if (!coefficients) return null;
+
+  const [intercept, linear, quadratic] = coefficients;
+  const meanY = y.reduce((sum, value) => sum + value, 0) / y.length;
+  let ssTot = 0;
+  let ssRes = 0;
+  const fitted = [];
+
+  for (let index = 0; index < x.length; index += 1) {
+    const estimate = intercept + (linear * x[index]) + (quadratic * x[index] * x[index]);
+    fitted.push(estimate);
+    ssTot += (y[index] - meanY) ** 2;
+    ssRes += (y[index] - estimate) ** 2;
+  }
+
+  const r2 = ssTot > 0 ? clamp(1 - (ssRes / ssTot), 0, 1) : NaN;
+  if (!Number.isFinite(r2)) return null;
+
+  return {
+    intercept,
+    linear,
+    quadratic,
+    fitted,
+    r2
+  };
+}
+
+function buildPearsonDiagnostics(dataset, pearson, spearman, outlierFlags) {
+  const points = dataset.labels.map((label, index) => {
+    const fitted = pearson.intercept + (pearson.slope * dataset.x[index]);
+    const residual = dataset.y[index] - fitted;
+    return {
+      index,
+      label,
+      x: dataset.x[index],
+      y: dataset.y[index],
+      fitted,
+      residual,
+      absResidual: Math.abs(residual),
+      outlier: outlierFlags[index]
+    };
+  });
+
+  const rankedResiduals = [...points].sort((left, right) => right.absResidual - left.absResidual);
+  const highlighted = rankedResiduals.slice(0, 6);
+  const highlightSet = new Set(highlighted.slice(0, 4).map(point => point.index));
+  const mae = points.reduce((sum, point) => sum + point.absResidual, 0) / points.length;
+  const rmse = Math.sqrt(points.reduce((sum, point) => sum + (point.residual ** 2), 0) / points.length);
+  const yRange = Math.max(...dataset.y) - Math.min(...dataset.y) || 1;
+  const normalizedMae = mae / yRange;
+  const normalizedRmse = rmse / yRange;
+  const quadratic = fitQuadraticTrend(dataset.x, dataset.y);
+  const curvatureGain = quadratic ? quadratic.r2 - pearson.r2 : 0;
+  const gap = Math.abs(Math.abs(spearman.coef) - Math.abs(pearson.coef));
+  let adequacyTone = 'good';
+  let adequacyLabel = 'Reta linear resume bem a nuvem de pontos';
+
+  if (curvatureGain > 0.12 || gap > 0.2) {
+    adequacyTone = 'warning';
+    adequacyLabel = 'Sinal importante de curvatura ou inadequacao linear';
+  } else if (curvatureGain > 0.06 || normalizedRmse > 0.18 || gap > 0.12 || highlighted.some(point => point.outlier)) {
+    adequacyTone = 'caution';
+    adequacyLabel = 'Reta util, mas com ressalvas de linearidade';
+  }
+
+  const influenceCount = highlighted.filter(point => point.outlier || point.absResidual > (mae * 1.75)).length;
+  return {
+    points,
+    highlighted,
+    highlightSet,
+    mae,
+    rmse,
+    normalizedMae,
+    normalizedRmse,
+    quadratic,
+    curvatureGain,
+    adequacyTone,
+    adequacyLabel,
+    influenceCount
+  };
+}
+
+function buildSpearmanDiagnostics(dataset, pearson, spearman, rankSummary) {
+  const rankedRows = dataset.labels.map((label, index) => ({
+    index,
+    label,
+    x: dataset.x[index],
+    y: dataset.y[index],
+    xRank: rankSummary.xRanks[index],
+    yRank: rankSummary.yRanks[index],
+    rankGap: rankSummary.yRanks[index] - rankSummary.xRanks[index],
+    absRankGap: Math.abs(rankSummary.yRanks[index] - rankSummary.xRanks[index])
+  }));
+
+  const topRankRows = [...rankedRows]
+    .sort((left, right) => right.absRankGap - left.absRankGap)
+    .slice(0, 8);
+  const highlightSet = new Set(topRankRows.slice(0, 4).map(row => row.index));
+  const sortedByX = [...rankedRows].sort((left, right) => left.x - right.x || left.y - right.y);
+  const expectedDirection = spearman.coef >= 0 ? 1 : -1;
+  let comparableSteps = 0;
+  let alignedSteps = 0;
+  let reversals = 0;
+
+  for (let index = 0; index < sortedByX.length - 1; index += 1) {
+    const deltaY = sortedByX[index + 1].y - sortedByX[index].y;
+    if (Math.abs(deltaY) < 1e-9) continue;
+    comparableSteps += 1;
+    const direction = deltaY > 0 ? 1 : -1;
+    if (direction === expectedDirection) alignedSteps += 1;
+    else reversals += 1;
+  }
+
+  const monotonicConsistency = comparableSteps ? alignedSteps / comparableSteps : 1;
+  let monotonicLabel = 'monotonicidade moderada';
+  if (Math.abs(spearman.coef) >= 0.7 && monotonicConsistency >= 0.8) monotonicLabel = 'monotonicidade muito consistente';
+  else if (Math.abs(spearman.coef) >= 0.45 && monotonicConsistency >= 0.68) monotonicLabel = 'monotonicidade consistente';
+  else if (monotonicConsistency < 0.55) monotonicLabel = 'monotonicidade irregular';
+
+  const avgRankGap = rankedRows.reduce((sum, row) => sum + row.absRankGap, 0) / rankedRows.length;
+  return {
+    rankedRows,
+    topRankRows,
+    highlightSet,
+    monotonicConsistency,
+    monotonicLabel,
+    avgRankGap,
+    maxRankGap: topRankRows[0]?.absRankGap || 0,
+    reversals,
+    comparableSteps,
+    gapVsPearson: Math.abs(Math.abs(spearman.coef) - Math.abs(pearson.coef))
+  };
+}
+
+function buildMetricRows(primaryCards, secondaryCards) {
+  return `
+    <div class="correlation-metric-row correlation-metric-row-primary">
+      ${primaryCards.join('')}
+    </div>
+    ${secondaryCards.length ? `
+      <div class="correlation-metric-row correlation-metric-row-secondary">
+        ${secondaryCards.join('')}
+      </div>
+    ` : ''}
+  `;
+}
+
+function buildInsightStrip(items, utils) {
+  const visibleItems = items.filter(Boolean);
+  if (!visibleItems.length) return '';
+
+  return `
+    <div class="correlation-insight-strip">
+      ${visibleItems.map(item => `
+        <article class="correlation-insight-pill ${item.tone ? `is-${item.tone}` : ''}">
+          <strong>${utils.escapeHtml(item.label)}</strong>
+          <span>${utils.escapeHtml(item.text)}</span>
+        </article>
+      `).join('')}
+    </div>
+  `;
+}
+
+function buildEnhancedScatterSvg(dataset, pearson, diagnostics, utils) {
+  const width = 980;
+  const height = 560;
+  const margin = { top: 42, right: 36, bottom: 84, left: 94 };
+  const minX = Math.min(...dataset.x);
+  const maxX = Math.max(...dataset.x);
+  const minY = Math.min(...dataset.y);
+  const maxY = Math.max(...dataset.y);
+  const xPad = (maxX - minX || 1) * 0.1;
+  const yPad = (maxY - minY || 1) * 0.12;
+  const chartWidth = width - margin.left - margin.right;
+  const chartHeight = height - margin.top - margin.bottom;
+  const px = value => margin.left + ((value - (minX - xPad)) / (((maxX - minX) + (xPad * 2)) || 1)) * chartWidth;
+  const py = value => height - margin.bottom - ((value - (minY - yPad)) / (((maxY - minY) + (yPad * 2)) || 1)) * chartHeight;
+  const xTicks = buildTickValues(minX, maxX, 5);
+  const yTicks = buildTickValues(minY, maxY, 5);
+  const x1 = minX - xPad;
+  const x2 = maxX + xPad;
+  const y1 = pearson.intercept + (pearson.slope * x1);
+  const y2 = pearson.intercept + (pearson.slope * x2);
+  const shouldLabelPoints = dataset.labels.length <= 14;
+  const highlightLines = diagnostics.highlighted.slice(0, 4).map(point => `
+    <line
+      x1="${px(point.x).toFixed(2)}"
+      y1="${py(point.y).toFixed(2)}"
+      x2="${px(point.x).toFixed(2)}"
+      y2="${py(point.fitted).toFixed(2)}"
+      stroke="rgba(180,83,9,0.65)"
+      stroke-width="2.4"
+      stroke-dasharray="6 6"
+      stroke-linecap="round"
+    />
+  `).join('');
+
+  const points = diagnostics.points.map(point => {
+    const isHighlighted = diagnostics.highlightSet.has(point.index);
+    const fill = point.outlier ? '#d97706' : (isHighlighted ? '#0f766e' : '#2563eb');
+    const halo = isHighlighted
+      ? `<circle cx="${px(point.x).toFixed(2)}" cy="${py(point.y).toFixed(2)}" r="10.8" fill="rgba(15,118,110,0.12)" />`
+      : '';
+    const label = shouldLabelPoints || isHighlighted
+      ? `<text x="${(px(point.x) + 9).toFixed(2)}" y="${(py(point.y) - 10).toFixed(2)}" font-size="11" fill="#48627f">${utils.escapeHtml(point.label).slice(0, 18)}</text>`
+      : '';
+    return `
+      <g>
+        ${halo}
+        <circle cx="${px(point.x).toFixed(2)}" cy="${py(point.y).toFixed(2)}" r="${isHighlighted ? '6.7' : '5.4'}" fill="${fill}" stroke="#ffffff" stroke-width="${isHighlighted ? '2.4' : '1.8'}">
+          <title>${utils.escapeHtml(point.label)} | ${utils.escapeHtml(dataset.headers[0])}: ${utils.fmtNumber(point.x, 2)} | ${utils.escapeHtml(dataset.headers[1])}: ${utils.fmtNumber(point.y, 2)} | Ajustado: ${utils.fmtNumber(point.fitted, 2)} | Residuo: ${utils.fmtSigned(point.residual, 2)}</title>
+        </circle>
+        ${label}
+      </g>
+    `;
+  }).join('');
+
+  const gridX = xTicks.map(value => `
+    <g>
+      <line x1="${px(value).toFixed(2)}" y1="${margin.top}" x2="${px(value).toFixed(2)}" y2="${height - margin.bottom}" stroke="rgba(148,163,184,0.22)" />
+      <text x="${px(value).toFixed(2)}" y="${height - margin.bottom + 28}" text-anchor="middle" fill="#5b6b84" font-size="12">${utils.fmtNumber(value, 2)}</text>
+    </g>
+  `).join('');
+  const gridY = yTicks.map(value => `
+    <g>
+      <line x1="${margin.left}" y1="${py(value).toFixed(2)}" x2="${width - margin.right}" y2="${py(value).toFixed(2)}" stroke="rgba(148,163,184,0.22)" />
+      <text x="${margin.left - 14}" y="${(py(value) + 4).toFixed(2)}" text-anchor="end" fill="#5b6b84" font-size="12">${utils.fmtNumber(value, 2)}</text>
+    </g>
+  `).join('');
+
+  const equationText = `${dataset.headers[1]} = ${utils.fmtNumber(pearson.intercept, 2)} ${pearson.slope >= 0 ? '+' : '-'} ${utils.fmtNumber(Math.abs(pearson.slope), 2)} x ${dataset.headers[0]}`;
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="scatter-svg" role="img" aria-label="Dispersao com reta de tendencia para Pearson">
+      <defs>
+        <linearGradient id="pearson-bg" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#f8fbff"/>
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="${width}" height="${height}" rx="24" fill="url(#pearson-bg)"/>
+      <rect x="${margin.left}" y="${margin.top}" width="${chartWidth}" height="${chartHeight}" rx="18" fill="rgba(255,255,255,0.78)" stroke="rgba(217,229,241,0.9)"/>
+      ${gridX}
+      ${gridY}
+      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#9cb0ca" stroke-width="1.4"/>
+      <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#9cb0ca" stroke-width="1.4"/>
+      ${highlightLines}
+      <line x1="${px(x1).toFixed(2)}" y1="${py(y1).toFixed(2)}" x2="${px(x2).toFixed(2)}" y2="${py(y2).toFixed(2)}" stroke="#0f766e" stroke-width="3.2" stroke-linecap="round"/>
+      ${points}
+      <rect x="${width - 298}" y="28" width="258" height="96" rx="18" fill="rgba(15,118,110,0.10)" stroke="rgba(15,118,110,0.20)"/>
+      <text x="${width - 278}" y="52" fill="#164e63" font-size="12" font-weight="700">Pearson | reta linear</text>
+      <text x="${width - 278}" y="71" fill="#33556f" font-size="11">${utils.escapeHtml(equationText)}</text>
+      <text x="${width - 278}" y="89" fill="#33556f" font-size="11">R2 = ${utils.fmtNumber(pearson.r2, 3)} | MAE = ${utils.fmtNumber(diagnostics.mae, 2)}</text>
+      <text x="${width - 278}" y="107" fill="#33556f" font-size="11">IC95% de r: ${utils.escapeHtml(formatCi(pearson.ci, utils))}</text>
+      <text x="${width / 2}" y="${height - 22}" text-anchor="middle" fill="#1e293b" font-size="14" font-weight="700">${utils.escapeHtml(dataset.headers[0])}</text>
+      <text x="26" y="${height / 2}" text-anchor="middle" fill="#1e293b" font-size="14" font-weight="700" transform="rotate(-90, 26, ${height / 2})">${utils.escapeHtml(dataset.headers[1])}</text>
+    </svg>
+  `;
+}
+
+function buildEnhancedRankScatterSvg(dataset, spearman, rankSummary, diagnostics, utils) {
+  const width = 980;
+  const height = 560;
+  const margin = { top: 42, right: 36, bottom: 84, left: 94 };
+  const xRanks = rankSummary.xRanks;
+  const yRanks = rankSummary.yRanks;
+  const maxRank = Math.max(...xRanks, ...yRanks, 1);
+  const minRank = Math.min(...xRanks, ...yRanks, 1);
+  const pad = 0.8;
+  const chartWidth = width - margin.left - margin.right;
+  const chartHeight = height - margin.top - margin.bottom;
+  const px = value => margin.left + ((value - (minRank - pad)) / (((maxRank - minRank) + (pad * 2)) || 1)) * chartWidth;
+  const py = value => height - margin.bottom - ((value - (minRank - pad)) / (((maxRank - minRank) + (pad * 2)) || 1)) * chartHeight;
+  const ticks = buildTickValues(minRank, maxRank, 5);
+  const sortedByXRank = [...diagnostics.rankedRows].sort((left, right) => left.xRank - right.xRank || left.yRank - right.yRank);
+  const monotonePath = sortedByXRank
+    .map((row, index) => `${index === 0 ? 'M' : 'L'} ${px(row.xRank).toFixed(2)} ${py(row.yRank).toFixed(2)}`)
+    .join(' ');
+  const shouldLabelPoints = dataset.labels.length <= 14;
+
+  const grid = ticks.map(value => `
+    <g>
+      <line x1="${px(value).toFixed(2)}" y1="${margin.top}" x2="${px(value).toFixed(2)}" y2="${height - margin.bottom}" stroke="rgba(148,163,184,0.22)" />
+      <line x1="${margin.left}" y1="${py(value).toFixed(2)}" x2="${width - margin.right}" y2="${py(value).toFixed(2)}" stroke="rgba(148,163,184,0.22)" />
+      <text x="${px(value).toFixed(2)}" y="${height - margin.bottom + 28}" text-anchor="middle" fill="#5b6b84" font-size="12">${utils.fmtNumber(value, 1)}</text>
+      <text x="${margin.left - 14}" y="${(py(value) + 4).toFixed(2)}" text-anchor="end" fill="#5b6b84" font-size="12">${utils.fmtNumber(value, 1)}</text>
+    </g>
+  `).join('');
+
+  const points = diagnostics.rankedRows.map(row => {
+    const isHighlighted = diagnostics.highlightSet.has(row.index);
+    const halo = isHighlighted
+      ? `<circle cx="${px(row.xRank).toFixed(2)}" cy="${py(row.yRank).toFixed(2)}" r="10.8" fill="rgba(37,99,235,0.12)" />`
+      : '';
+    const label = shouldLabelPoints || isHighlighted
+      ? `<text x="${(px(row.xRank) + 9).toFixed(2)}" y="${(py(row.yRank) - 10).toFixed(2)}" font-size="11" fill="#48627f">${utils.escapeHtml(row.label).slice(0, 18)}</text>`
+      : '';
+    return `
+      <g>
+        ${halo}
+        <circle cx="${px(row.xRank).toFixed(2)}" cy="${py(row.yRank).toFixed(2)}" r="${isHighlighted ? '6.7' : '5.4'}" fill="${isHighlighted ? '#2563eb' : '#0f766e'}" stroke="#ffffff" stroke-width="${isHighlighted ? '2.4' : '1.8'}">
+          <title>${utils.escapeHtml(row.label)} | posto X: ${utils.fmtNumber(row.xRank, 1)} | posto Y: ${utils.fmtNumber(row.yRank, 1)} | diferenca: ${utils.fmtSigned(row.rankGap, 1)}</title>
+        </circle>
+        ${label}
+      </g>
+    `;
+  }).join('');
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="scatter-svg" role="img" aria-label="Postos de X versus postos de Y para Spearman">
+      <defs>
+        <linearGradient id="spearman-bg" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#f8fbff"/>
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="${width}" height="${height}" rx="24" fill="url(#spearman-bg)"/>
+      <rect x="${margin.left}" y="${margin.top}" width="${chartWidth}" height="${chartHeight}" rx="18" fill="rgba(255,255,255,0.78)" stroke="rgba(217,229,241,0.9)"/>
+      ${grid}
+      <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#9cb0ca" stroke-width="1.4"/>
+      <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#9cb0ca" stroke-width="1.4"/>
+      <line x1="${px(minRank).toFixed(2)}" y1="${py(minRank).toFixed(2)}" x2="${px(maxRank).toFixed(2)}" y2="${py(maxRank).toFixed(2)}" stroke="rgba(15,118,110,0.65)" stroke-width="2.2" stroke-dasharray="8 6"/>
+      <path d="${monotonePath}" fill="none" stroke="rgba(37,99,235,0.35)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      ${points}
+      <rect x="${width - 306}" y="28" width="266" height="98" rx="18" fill="rgba(37,99,235,0.09)" stroke="rgba(37,99,235,0.18)"/>
+      <text x="${width - 286}" y="52" fill="#1d4ed8" font-size="12" font-weight="700">Spearman | leitura por ranks</text>
+      <text x="${width - 286}" y="71" fill="#33556f" font-size="11">rho = ${utils.fmtSigned(spearman.coef, 3)} | IC95% ${utils.escapeHtml(formatCi(spearman.ci, utils))}</text>
+      <text x="${width - 286}" y="89" fill="#33556f" font-size="11">Consistencia monotona: ${utils.fmtNumber(diagnostics.monotonicConsistency * 100, 0)}%</text>
+      <text x="${width - 286}" y="107" fill="#33556f" font-size="11">Empates: X ${rankSummary.xTies.groups} | Y ${rankSummary.yTies.groups}</text>
+      <text x="${width / 2}" y="${height - 22}" text-anchor="middle" fill="#1e293b" font-size="14" font-weight="700">Postos de ${utils.escapeHtml(dataset.headers[0])}</text>
+      <text x="26" y="${height / 2}" text-anchor="middle" fill="#1e293b" font-size="14" font-weight="700" transform="rotate(-90, 26, ${height / 2})">Postos de ${utils.escapeHtml(dataset.headers[1])}</text>
+    </svg>
+  `;
+}
+
+function buildResidualTableEnhanced(dataset, diagnostics, utils, limit = 6) {
+  const rows = diagnostics.highlighted.slice(0, limit);
+  return `
+    <div class="preview-table-wrap">
+      <table class="preview-table correlation-preview-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>${utils.escapeHtml(dataset.headers[0])}</th>
+            <th>${utils.escapeHtml(dataset.headers[1])}</th>
+            <th>Y ajustado</th>
+            <th>Residuo</th>
+            <th>|Residuo|</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr class="${row.outlier ? 'correlation-preview-row-ignored' : 'correlation-preview-row-valid'}">
+              <td>${utils.escapeHtml(row.label)}</td>
+              <td>${utils.fmtNumber(row.x, 2)}</td>
+              <td>${utils.fmtNumber(row.y, 2)}</td>
+              <td>${utils.fmtNumber(row.fitted, 2)}</td>
+              <td>${utils.fmtSigned(row.residual, 2)}</td>
+              <td>${utils.fmtNumber(row.absResidual, 2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function buildRankComparisonTableEnhanced(dataset, diagnostics, utils, limit = 8) {
+  const rows = diagnostics.topRankRows.slice(0, limit);
+  return `
+    <div class="preview-table-wrap">
+      <table class="preview-table correlation-preview-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>${utils.escapeHtml(dataset.headers[0])}</th>
+            <th>Posto X</th>
+            <th>${utils.escapeHtml(dataset.headers[1])}</th>
+            <th>Posto Y</th>
+            <th>Dif. postos</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr class="${Math.abs(row.rankGap) >= diagnostics.avgRankGap ? 'correlation-preview-row-ignored' : 'correlation-preview-row-valid'}">
+              <td>${utils.escapeHtml(row.label)}</td>
+              <td>${utils.fmtNumber(row.x, 2)}</td>
+              <td>${utils.fmtNumber(row.xRank, 1)}</td>
+              <td>${utils.fmtNumber(row.y, 2)}</td>
+              <td>${utils.fmtNumber(row.yRank, 1)}</td>
+              <td>${utils.fmtSigned(row.rankGap, 1)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function buildPearsonInterpretationHtml(dataset, pearson, spearman, diagnostics, outlierLabels, utils) {
+  const direction = classifyDirection(pearson.coef);
+  const strength = classifyStrength(pearson.coef);
+  const mainFinding = pearson.p < 0.05
+    ? `Pearson indicou associacao linear ${direction} de intensidade ${strength} entre ${dataset.headers[0]} e ${dataset.headers[1]} (r = ${utils.fmtSigned(pearson.coef, 3)}; p ${formatPValue(pearson.p, utils)}).`
+    : `Pearson nao encontrou evidencia estatistica robusta de associacao linear entre ${dataset.headers[0]} e ${dataset.headers[1]} (r = ${utils.fmtSigned(pearson.coef, 3)}; p ${formatPValue(pearson.p, utils)}).`;
+  const adequacyText = diagnostics.adequacyTone === 'warning'
+    ? `A reta linear parece resumir os pontos com limitacoes importantes; o ganho de um ajuste curvo foi de ${utils.fmtNumber(diagnostics.curvatureGain, 3)} em R2.`
+    : diagnostics.adequacyTone === 'caution'
+      ? `A reta linear ainda ajuda na leitura, mas ha sinais de ressalva: desvio medio de ${utils.fmtNumber(diagnostics.mae, 2)} e possivel curvatura leve a moderada.`
+      : `A reta linear resume os pontos de forma satisfatoria para uma leitura inicial, com desvio medio de ${utils.fmtNumber(diagnostics.mae, 2)}.`;
+  const influenceText = outlierLabels.length
+    ? `Os pontos ${outlierLabels.slice(0, 4).join(', ')}${outlierLabels.length > 4 ? ', ...' : ''} merecem revisao porque Pearson e mais sensivel a outliers e aos maiores residuos.`
+    : `Nao apareceram outliers fortes na triagem inicial, embora os maiores residuos continuem visiveis no painel auxiliar.`;
+
+  return `
+    <p><strong>Achado principal.</strong> ${utils.escapeHtml(mainFinding)}</p>
+    <ul>
+      <li>Forca e direcao: ${strength}, ${direction}, com IC95% de r em ${utils.escapeHtml(formatCi(pearson.ci, utils))}.</li>
+      <li>Adequacao da reta: ${utils.escapeHtml(adequacyText)}</li>
+      <li>Comparacao didatica: ${utils.escapeHtml(compareMessage(pearson, spearman))}</li>
+      <li>Pontos influentes: ${utils.escapeHtml(influenceText)}</li>
+    </ul>
+  `;
+}
+
+function buildSpearmanInterpretationHtml(dataset, pearson, spearman, diagnostics, rankSummary, utils) {
+  const direction = classifyDirection(spearman.coef);
+  const strength = classifyStrength(spearman.coef);
+  const mainFinding = spearman.p < 0.05
+    ? `Spearman indicou associacao monotona ${direction} de intensidade ${strength} entre ${dataset.headers[0]} e ${dataset.headers[1]} (rho = ${utils.fmtSigned(spearman.coef, 3)}; p ${formatPValue(spearman.p, utils)}).`
+    : `Spearman nao encontrou evidencia estatistica robusta de associacao monotona entre ${dataset.headers[0]} e ${dataset.headers[1]} (rho = ${utils.fmtSigned(spearman.coef, 3)}; p ${formatPValue(spearman.p, utils)}).`;
+  const tieText = rankSummary.xTies.groups || rankSummary.yTies.groups
+    ? `Empates foram tratados com postos medios (${rankSummary.xTies.groups} grupo(s) em X e ${rankSummary.yTies.groups} em Y).`
+    : 'Nao houve empates relevantes; a ordenacao relativa ficou limpa.';
+  const monotonicText = diagnostics.monotonicConsistency >= 0.8
+    ? `A ordem relativa dos dados foi bastante coerente com a tendencia monotona esperada (${utils.fmtNumber(diagnostics.monotonicConsistency * 100, 0)}% das transicoes alinhadas).`
+    : diagnostics.monotonicConsistency >= 0.6
+      ? `A ordenacao relativa mostrou monotonicidade parcial (${utils.fmtNumber(diagnostics.monotonicConsistency * 100, 0)}% das transicoes alinhadas), sem exigir uma reta perfeita.`
+      : `A ordenacao relativa foi irregular (${utils.fmtNumber(diagnostics.monotonicConsistency * 100, 0)}% das transicoes alinhadas), sugerindo cautela mesmo com a leitura por ranks.`;
+
+  return `
+    <p><strong>Achado principal.</strong> ${utils.escapeHtml(mainFinding)}</p>
+    <ul>
+      <li>Forca e direcao monotona: ${strength}, ${direction}, com IC95% de rho em ${utils.escapeHtml(formatCi(spearman.ci, utils))}.</li>
+      <li>Base do calculo: ${utils.escapeHtml(tieText)}</li>
+      <li>Monotonicidade: ${utils.escapeHtml(monotonicText)}</li>
+      <li>Comparacao didatica: ${utils.escapeHtml(compareMessage(pearson, spearman))}</li>
+    </ul>
   `;
 }
 
