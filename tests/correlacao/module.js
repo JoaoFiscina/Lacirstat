@@ -449,3 +449,272 @@ function buildInfluenceTable(dataset, pearson, outlierFlags, utils, limit = 6) {
     </div>
   `;
 }
+
+export async function renderTestModule(ctx) {
+  const { root, config, utils, stats, shared } = ctx;
+  root.classList.add('correlacao-module-shell');
+
+  try {
+    const warnedUiKeys = new Set();
+
+    function warnMissingUi(label, selector, detail = 'O modulo seguira carregando com os elementos disponiveis.') {
+      const key = `${label}:${selector}`;
+      if (warnedUiKeys.has(key)) return;
+      warnedUiKeys.add(key);
+      console.warn(`[correlacao] Elemento nao encontrado para ${label} (${selector}). ${detail}`);
+    }
+
+    function createMissingElementRef(label, selector) {
+      const noop = () => {};
+      return {
+        __correlationMissingRef: true,
+        label,
+        selector,
+        value: '',
+        innerHTML: '',
+        textContent: '',
+        className: '',
+        disabled: true,
+        files: [],
+        dataset: {},
+        classList: {
+          add: noop,
+          remove: noop,
+          toggle: noop,
+          contains: () => false
+        },
+        addEventListener: noop,
+        removeEventListener: noop,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        setAttribute: noop,
+        getAttribute: () => null,
+        focus: noop
+      };
+    }
+
+    function isMissingElementRef(element) {
+      return Boolean(element?.__correlationMissingRef);
+    }
+
+    function findInContainer(container, selector, options = {}) {
+      const { label = selector, optional = false } = options;
+      const element = container?.querySelector?.(selector) || null;
+      if (element) return element;
+      warnMissingUi(
+        label,
+        selector,
+        optional
+          ? 'Controle opcional ausente nesta renderizacao.'
+          : 'Revise se o seletor ainda corresponde ao HTML atual do modulo.'
+      );
+      return createMissingElementRef(label, selector);
+    }
+
+    function safeBindElement(element, eventName, handler, options = {}) {
+      const { label = 'elemento', bindingKey = `${eventName}:${label}`, listenerOptions } = options;
+      if (!element || isMissingElementRef(element)) return null;
+      if (!element[CORRELATION_BOUND_EVENTS]) {
+        element[CORRELATION_BOUND_EVENTS] = new Set();
+      }
+      if (element[CORRELATION_BOUND_EVENTS].has(bindingKey)) {
+        return element;
+      }
+      element[CORRELATION_BOUND_EVENTS].add(bindingKey);
+      element.addEventListener(eventName, handler, listenerOptions);
+      return element;
+    }
+
+    function safeBind(container, selector, eventName, handler, options = {}) {
+      const { label = selector, optional = false, bindingKey, listenerOptions } = options;
+      const element = container?.querySelector?.(selector) || null;
+      if (!element) {
+        warnMissingUi(
+          label,
+          selector,
+          optional
+            ? `O listener opcional de ${eventName} nao sera registrado.`
+            : `O listener de ${eventName} nao foi registrado; revise o HTML atual do modulo.`
+        );
+        return null;
+      }
+      return safeBindElement(element, eventName, handler, { label, bindingKey, listenerOptions });
+    }
+
+    function safeBindAll(container, selector, eventName, handler, options = {}) {
+      const { label = selector, optional = false, bindingKey = `${eventName}:${selector}`, listenerOptions } = options;
+      const elements = Array.from(container?.querySelectorAll?.(selector) || []);
+      if (!elements.length) {
+        warnMissingUi(
+          label,
+          selector,
+          optional
+            ? 'Nenhum controle opcional encontrado para este grupo.'
+            : 'Nenhum elemento encontrado para o grupo de listeners.'
+        );
+        return [];
+      }
+      return elements.map((element, index) => safeBindElement(element, eventName, handler, {
+        label: `${label} #${index + 1}`,
+        bindingKey,
+        listenerOptions
+      })).filter(Boolean);
+    }
+
+    function toneClass(kind) {
+      if (kind === 'success') return 'success-box';
+      if (kind === 'error') return 'error-box';
+      return 'status-bar';
+    }
+
+    root.innerHTML = `
+      <div class="module-grid correlacao-module">
+        <section class="module-header">
+          <div class="chip chip-info">Modulo didatico · correlacao</div>
+          <h3>${utils.escapeHtml(config.title || 'Correlacao de Pearson / Spearman')}</h3>
+          <p>${utils.escapeHtml(config.subtitle || '')}</p>
+          <p>${utils.escapeHtml(config.description || '')}</p>
+        </section>
+
+        <section class="callout-grid correlacao-cards">
+          ${(config.didacticCards || []).map(card => `
+            <article class="help-card didactic-card">
+              <h4>${utils.escapeHtml(card.title || '')}</h4>
+              <p>${utils.escapeHtml(card.text || '')}</p>
+            </article>
+          `).join('')}
+        </section>
+
+        <section class="surface-card decorated">
+          <h4>Camada Universal DATASUS</h4>
+          <p class="small-note">Importe, revise e confirme a base DATASUS antes de montar os pares X e Y para Pearson ou Spearman.</p>
+          <div id="c-datasus-wizard" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Base derivada do DATASUS</h4>
+          <div id="c-datasus-controls" class="small-note">Confirme uma base DATASUS para liberar a montagem assistida da correlacao.</div>
+          <div id="c-datasus-preview" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card decorated">
+          <div class="tabular-workflow-head">
+            <div>
+              <span class="small-chip info">Entrada por colunas</span>
+              <h4 style="margin-top:10px;">Importar ou colar dados</h4>
+            </div>
+          </div>
+          <p class="small-note">Formato principal: <strong>${utils.escapeHtml(CORRELATION_FORMAT_LABEL)}</strong>. Aceita CSV com ponto e virgula, colagem tabulada do Excel e numeros com virgula decimal.</p>
+          <div class="tabular-intake-grid">
+            <article class="tabular-workflow-block">
+              <div class="tabular-workflow-head">
+                <h5>Importar arquivo</h5>
+              </div>
+              <p class="small-note">Aceita CSV, XLSX e TXT. Preferencia: CSV com ponto e virgula e decimal com virgula.</p>
+              <div class="tabular-file-picker">
+                <label for="c-file" class="btn-secondary">Importar arquivo</label>
+                <input id="c-file" class="tabular-hidden-file" type="file" accept=".csv,.txt,.xlsx" />
+                <span id="c-file-name" class="small-note">Nenhum arquivo selecionado.</span>
+              </div>
+              <div class="tabular-link-row">
+                <a class="btn-ghost" href="${CORRELATION_EMPTY_TEMPLATE_URL}" download="modelo-correlacao-vazio.csv">Baixar modelo</a>
+                <a class="btn-ghost" href="${CORRELATION_FILLED_TEMPLATE_URL}" download="modelo-correlacao-exemplo.csv">Baixar exemplo</a>
+              </div>
+            </article>
+
+            <article class="tabular-workflow-block">
+              <div class="tabular-workflow-head">
+                <h5>Colar dados</h5>
+              </div>
+              <textarea id="c-paste" class="tabular-paste-textarea" spellcheck="false" placeholder="${utils.escapeHtml(CORRELATION_EXAMPLE_TEXT)}"></textarea>
+              <div class="actions-row tabular-actions-row">
+                <button type="button" class="btn-secondary" id="c-use-example">Usar exemplo</button>
+                <button type="button" class="btn" id="c-read-data">Ler dados</button>
+                <button type="button" class="btn-ghost" id="c-clear">Limpar</button>
+              </div>
+            </article>
+
+            <article class="tabular-workflow-block tabular-workflow-block-wide">
+              <div class="tabular-workflow-head">
+                <h5>Como organizar a planilha</h5>
+              </div>
+              ${buildCorrelationFormatPreview(utils)}
+            </article>
+          </div>
+          <div id="c-intake-status" class="status-bar" style="margin-top:16px;">Escolha um arquivo ou cole a tabela para ler os dados.</div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Previa dos dados</h4>
+          <div id="c-preview-meta" class="tabular-preview-stack">
+            <div class="small-note">Nenhum dado lido ainda.</div>
+          </div>
+          <div id="c-preview-table" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card">
+          <div class="tabular-workflow-head">
+            <div>
+              <h4>Rodar analise</h4>
+              <p class="small-note" style="margin:8px 0 0;">ID e apenas rotulo. Variavel X e variavel Y entram no calculo. Alternar o metodo nao apaga os dados lidos.</p>
+            </div>
+            <div class="correlation-method-switch" role="tablist" aria-label="Metodo de correlacao em destaque">
+              <button type="button" class="correlation-method-btn is-active" data-correlation-method="pearson" aria-selected="true">Pearson</button>
+              <button type="button" class="correlation-method-btn" data-correlation-method="spearman" aria-selected="false">Spearman</button>
+            </div>
+          </div>
+          <div class="actions-row" style="margin-top:16px;">
+            <button type="button" class="btn" id="c-run-analysis">Rodar analise</button>
+          </div>
+          <div id="c-error" style="margin-top:14px;"></div>
+          <div id="c-status" class="status-bar" style="margin-top:14px;">Leia ou importe uma base para continuar.</div>
+          <div id="c-metrics" class="metrics-grid" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Interpretacao automatica</h4>
+          <div id="c-interpretation" class="result-card"><p class="muted">A interpretacao aparecera aqui apos rodar a analise.</p></div>
+          <div id="c-outlier-alert" style="margin-top:14px;"></div>
+        </section>
+
+        <section class="surface-card">
+          <h4>Visualizacao e pontos influentes</h4>
+          <div id="c-charts" class="chart-grid"></div>
+        </section>
+      </div>
+    `;
+
+    const els = {
+      file: findInContainer(root, '#c-file', { label: 'arquivo de entrada' }),
+      fileName: findInContainer(root, '#c-file-name', { label: 'nome do arquivo' }),
+      paste: findInContainer(root, '#c-paste', { label: 'area de colagem' }),
+      intakeStatus: findInContainer(root, '#c-intake-status', { label: 'status da leitura' }),
+      previewMeta: findInContainer(root, '#c-preview-meta', { label: 'resumo da previa' }),
+      previewTable: findInContainer(root, '#c-preview-table', { label: 'tabela de previa' }),
+      error: findInContainer(root, '#c-error', { label: 'area de erro' }),
+      status: findInContainer(root, '#c-status', { label: 'status da analise' }),
+      metrics: findInContainer(root, '#c-metrics', { label: 'metricas' }),
+      interpretation: findInContainer(root, '#c-interpretation', { label: 'interpretacao' }),
+      outlier: findInContainer(root, '#c-outlier-alert', { label: 'alerta de outliers', optional: true }),
+      charts: findInContainer(root, '#c-charts', { label: 'graficos' }),
+      datasusWizard: findInContainer(root, '#c-datasus-wizard', { label: 'wizard DATASUS', optional: true }),
+      datasusControls: findInContainer(root, '#c-datasus-controls', { label: 'controles DATASUS', optional: true }),
+      datasusPreview: findInContainer(root, '#c-datasus-preview', { label: 'previa DATASUS', optional: true })
+    };
+
+    const state = {
+      dataset: buildEmptyCorrelationDataset(),
+      activeMethod: 'pearson',
+      lastResult: null
+    };
+
+    const datasusState = {
+      session: null,
+      sharedSession: clonePlain(shared?.datasus?.lastSession || null),
+      xSourceId: '',
+      ySourceId: '',
+      metricBySource: {},
+      timeKey: '',
+      labelMode: 'category-time',
+      derived: null
+    };
