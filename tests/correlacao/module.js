@@ -1097,11 +1097,11 @@ export async function renderTestModule(ctx) {
         if (!isMissingElementRef(els.datasusPreview)) {
           els.datasusPreview.innerHTML = '';
         }
-        els.datasusControls.querySelector('#c-datasus-use-shared')?.addEventListener('click', () => {
-          datasusState.sharedSession = clonePlain(shared.datasus.lastSession);
+        safeBind(els.datasusControls, '#c-datasus-use-shared', 'click', () => {
+          datasusState.sharedSession = clonePlain(shared?.datasus?.lastSession || null);
           renderDatasusControls();
           renderDatasusPreview();
-        });
+        }, { optional: true, label: 'usar sessao DATASUS compartilhada' });
         return;
       }
 
@@ -1163,41 +1163,41 @@ export async function renderTestModule(ctx) {
         </div>
       `;
 
-      els.datasusControls.querySelector('#c-datasus-x-source')?.addEventListener('change', event => {
+      safeBind(els.datasusControls, '#c-datasus-x-source', 'change', event => {
         datasusState.xSourceId = event.target.value;
         ensureDatasusDefaults();
         renderDatasusControls();
         renderDatasusPreview();
-      });
+      }, { label: 'fonte X DATASUS' });
 
-      els.datasusControls.querySelector('#c-datasus-y-source')?.addEventListener('change', event => {
+      safeBind(els.datasusControls, '#c-datasus-y-source', 'change', event => {
         datasusState.ySourceId = event.target.value;
         ensureDatasusDefaults();
         renderDatasusControls();
         renderDatasusPreview();
-      });
+      }, { label: 'fonte Y DATASUS' });
 
-      els.datasusControls.querySelector('#c-datasus-x-metric')?.addEventListener('change', event => {
+      safeBind(els.datasusControls, '#c-datasus-x-metric', 'change', event => {
         datasusState.metricBySource[xSource.id] = event.target.value;
         renderDatasusPreview();
-      });
+      }, { label: 'metrica X DATASUS' });
 
-      els.datasusControls.querySelector('#c-datasus-y-metric')?.addEventListener('change', event => {
+      safeBind(els.datasusControls, '#c-datasus-y-metric', 'change', event => {
         datasusState.metricBySource[ySource.id] = event.target.value;
         renderDatasusPreview();
-      });
+      }, { label: 'metrica Y DATASUS' });
 
-      els.datasusControls.querySelector('#c-datasus-time')?.addEventListener('change', event => {
+      safeBind(els.datasusControls, '#c-datasus-time', 'change', event => {
         datasusState.timeKey = event.target.value;
         renderDatasusPreview();
-      });
+      }, { label: 'periodo DATASUS' });
 
-      els.datasusControls.querySelector('#c-datasus-label-mode')?.addEventListener('change', event => {
+      safeBind(els.datasusControls, '#c-datasus-label-mode', 'change', event => {
         datasusState.labelMode = event.target.value;
         renderDatasusPreview();
-      });
+      }, { label: 'modo de rotulo DATASUS' });
 
-      els.datasusControls.querySelector('#c-datasus-send')?.addEventListener('click', pushDatasusToCorrelation);
+      safeBind(els.datasusControls, '#c-datasus-send', 'click', pushDatasusToCorrelation, { label: 'enviar base DATASUS ao modulo' });
     }
 
     function mountDatasusWizard() {
@@ -1220,21 +1220,31 @@ export async function renderTestModule(ctx) {
       const file = event.target.files?.[0];
       if (!file) return;
       await readSelectedFile(file);
-    }, { label: 'upload de arquivo', optional: true });
-    safeBind(root, '#c-use-example', 'click', loadExample, { label: 'botao usar exemplo', optional: true });
-    safeBind(root, '#c-read-data', 'click', readPastedData, { label: 'botao ler dados', optional: true });
-    safeBind(root, '#c-clear', 'click', clearAll, { label: 'botao limpar', optional: true });
-    safeBind(root, '#c-run-analysis', 'click', runAnalysis, { label: 'botao rodar analise', optional: true });
+    }, { label: 'importar arquivo' });
+    safeBind(root, '#c-use-example', 'click', loadExample, { label: 'usar exemplo' });
+    safeBind(root, '#c-read-data', 'click', () => readPastedData(), { label: 'ler dados colados' });
+    safeBind(root, '#c-clear', 'click', clearAll, { label: 'limpar dados' });
+    safeBind(root, '#c-run-analysis', 'click', runAnalysis, { label: 'rodar analise' });
     safeBindAll(root, '[data-correlation-method]', 'click', event => {
-      setActiveMethod(event.currentTarget?.getAttribute?.('data-correlation-method') || 'pearson');
-    }, { label: 'seletor de metodo', optional: true });
+      setActiveMethod(event.currentTarget.getAttribute('data-correlation-method'));
+    }, { label: 'alternancia Pearson/Spearman' });
 
+    renderPreview();
+    resetResultVisuals();
+    setIntakeStatus('status', 'Escolha um arquivo ou cole a tabela para ler os dados.');
     mountDatasusWizard();
     renderDatasusControls();
     renderDatasusPreview();
-    clearAll();
+    setActiveMethod('pearson');
   } catch (error) {
-    console.error(error);
-    root.innerHTML = `<div class="error-box">Nao foi possivel carregar o modulo de correlacao: ${utils.escapeHtml(error?.message || 'erro desconhecido')}.</div>`;
+    console.error('[correlacao] Falha ao renderizar o modulo.', error);
+    root.innerHTML = `
+      <div class="module-grid correlacao-module">
+        <section class="surface-card">
+          <h4>Modulo indisponivel no momento</h4>
+          <p class="small-note">Nao foi possivel montar a interface de correlacao agora. Atualize a pagina e tente novamente.</p>
+        </section>
+      </div>
+    `;
   }
 }
