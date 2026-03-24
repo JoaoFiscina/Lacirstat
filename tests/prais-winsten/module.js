@@ -889,8 +889,8 @@ export async function renderTestModule(ctx) {
     `;
 
     els.previewMessages.innerHTML = [
-      recognizedChips ? `<div class="prais-chip-row">${recognizedChips}</div>` : '',
       buildDetectedColumnsCallout(dataset, utils),
+      recognizedChips ? `<div class="prais-chip-row">${recognizedChips}</div>` : '',
       buildFeedbackBox(dataset.errors, 'error-box', utils, 'Validação'),
       buildFeedbackBox(dataset.warnings, 'status-bar', utils, 'Atenção'),
       buildFeedbackBox(dataset.infos, 'success-box', utils, 'Leitura')
