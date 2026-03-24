@@ -895,7 +895,6 @@ export async function renderTestModule(ctx) {
     const fileState = readTabularPasteState(els.paste.value, stats, PRAIS_TABULAR_OPTIONS);
     state.fileState = fileState;
     state.activeSource = 'paste';
-    state.lastFileName = '';
     return buildPraisDatasetFromTabularState(fileState, stats, {
       sourceKind: 'paste',
       sourceLabel: 'Dados colados'
@@ -906,7 +905,6 @@ export async function renderTestModule(ctx) {
     const fileState = await readTabularFileState(file, utils, stats, PRAIS_TABULAR_OPTIONS);
     state.fileState = fileState;
     state.activeSource = 'file';
-    state.lastFileName = file?.name || '';
     return buildPraisDatasetFromTabularState(fileState, stats, {
       sourceKind: 'file',
       sourceLabel: 'Arquivo importado'
@@ -926,138 +924,6 @@ export async function renderTestModule(ctx) {
 
     state.activeSource = 'none';
     return renderPreview(buildEmptyPraisDataset());
-  }
-
-  async function pushDatasusToPrais() {
-    const derived = deriveDatasusSeries();
-    state.derived = derived;
-    renderDatasusPreview();
-
-    if (!derived.ok) {
-      datasusControlsEl.innerHTML = `<div class="error-box">${utils.escapeHtml(derived.primaryError || 'Não há série temporal suficiente.')}</div>`;
-      return;
-    }
-
-    const source = getSource(state.sourceId);
-    const categoryLabel = derived.categoryLabel || source?.fileName || 'Série DATASUS';
-    const lines = [
-      PRAIS_FORMAT_LABEL,
-      ...derived.rows.map(row => `${categoryLabel};${row.timeLabel};${row.value};`)
-    ];
-
-    els.paste.value = lines.join('\n');
-    els.file.value = '';
-    await readCurrentInput();
-    await runAnalysis();
-    els.status.className = 'success-box';
-    els.status.textContent = `Série derivada do DATASUS enviada ao módulo com ${derived.rows.length} pontos válidos.`;
-  }
-
-  function renderDatasusPreview() {
-    const derived = deriveDatasusSeries();
-    state.derived = derived;
-
-    if (!derived.ok) {
-      datasusPreviewEl.innerHTML = `
-        <div class="error-box">
-          <strong>Série derivada ainda inválida.</strong>
-          <ul class="datasus-inline-list">
-            ${(derived.errors || [derived.primaryError || 'Não há série temporal suficiente.']).map(item => `<li>${utils.escapeHtml(item)}</li>`).join('')}
-          </ul>
-        </div>
-      `;
-      return;
-    }
-
-    const rows = derived.rows.map(row => [row.timeLabel, utils.fmtNumber(row.value, 3)]);
-    datasusPreviewEl.innerHTML = `
-      <div class="success-box">A série final está pronta para alimentar o módulo Prais-Winsten.</div>
-      <div class="small-note" style="margin:14px 0 10px;">Cada linha abaixo representa o valor final usado no eixo temporal.</div>
-      ${utils.renderPreviewTable(['Tempo', derived.metricLabel || 'Indicador'], rows, 20)}
-    `;
-  }
-
-  function renderDatasusControls() {
-    const sources = confirmedSources();
-    if (!sources.length) {
-      const hasShared = Boolean(shared?.datasus?.lastSession?.confirmedSources?.length);
-      datasusControlsEl.innerHTML = `
-        <div class="status-bar">Confirme uma base DATASUS no wizard para liberar a montagem assistida da série.</div>
-        ${hasShared ? '<div class="actions-row" style="margin-top:14px;"><button type="button" class="btn-secondary" id="pw-datasus-use-shared">Usar última sessão DATASUS confirmada</button></div>' : ''}
-      `;
-      datasusPreviewEl.innerHTML = '';
-      datasusControlsEl.querySelector('#pw-datasus-use-shared')?.addEventListener('click', () => {
-        state.sharedSession = clonePlain(shared.datasus.lastSession);
-        renderDatasusControls();
-        renderDatasusPreview();
-      });
-      return;
-    }
-
-    ensureDatasusDefaults();
-    const source = getSource(state.sourceId);
-    const metricOptions = getMetricOptions(source);
-    const categories = getCategoryOptions(source, true);
-
-    datasusControlsEl.innerHTML = `
-      <div class="form-grid three">
-        <div>
-          <label for="pw-datasus-source">Base normalizada</label>
-          <select id="pw-datasus-source">
-            ${sources.map(item => `<option value="${utils.escapeHtml(item.id)}"${item.id === source.id ? ' selected' : ''}>${utils.escapeHtml(item.fileName)}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label for="pw-datasus-metric">Medida</label>
-          <select id="pw-datasus-metric">
-            ${metricOptions.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === state.metricBySource[source.id] ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label for="pw-datasus-category">Categoria</label>
-          <select id="pw-datasus-category">
-            ${categories.map(option => `<option value="${utils.escapeHtml(option.key)}"${option.key === state.categoryKey ? ' selected' : ''}>${utils.escapeHtml(option.label)}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <div class="actions-row" style="margin-top:14px;">
-        <button type="button" class="btn" id="pw-datasus-send">Enviar série derivada para o módulo</button>
-      </div>
-    `;
-
-    datasusControlsEl.querySelector('#pw-datasus-source')?.addEventListener('change', event => {
-      state.sourceId = event.target.value;
-      ensureDatasusDefaults();
-      renderDatasusControls();
-      renderDatasusPreview();
-    });
-
-    datasusControlsEl.querySelector('#pw-datasus-metric')?.addEventListener('change', event => {
-      state.metricBySource[source.id] = event.target.value;
-      renderDatasusPreview();
-    });
-
-    datasusControlsEl.querySelector('#pw-datasus-category')?.addEventListener('change', event => {
-      state.categoryKey = event.target.value;
-      renderDatasusPreview();
-    });
-
-    datasusControlsEl.querySelector('#pw-datasus-send')?.addEventListener('click', pushDatasusToPrais);
-  }
-
-  function mountDatasusWizard() {
-    createDatasusWizard({
-      root: datasusWizardEl,
-      utils,
-      stats,
-      shared,
-      onSessionChange(session) {
-        state.session = clonePlain(session);
-        state.sharedSession = clonePlain(shared?.datasus?.lastSession || null);
-        renderDatasusControls();
-        renderDatasusPreview();
-      }
-    });
   }
 
   async function runAnalysis() {
@@ -1162,7 +1028,6 @@ export async function renderTestModule(ctx) {
     els.file.value = '';
     state.dataset = buildEmptyPraisDataset();
     state.fileState = null;
-    state.lastFileName = '';
     state.activeSource = 'none';
     renderPreview(state.dataset);
     clearOutput();
@@ -1197,8 +1062,5 @@ export async function renderTestModule(ctx) {
     }
   });
 
-  mountDatasusWizard();
-  renderDatasusControls();
-  renderDatasusPreview();
   await loadExample();
 }
