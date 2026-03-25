@@ -515,6 +515,28 @@ function buildPraisDatasetFromTabularState(fileState, stats, sourceMeta = {}) {
     dataset.infos.push(`A variável temporal foi interpretada como ${dataset.timeTypeSummary}.`);
   }
 
+  dataset.rows.forEach(row => {
+    row.notes = row.notes.map(note => String(note)
+      .replace(/^variavel_y\b/, 'a variavel 2')
+      .replace(/^a variÃ¡vel y\b/, 'a variavel 2')
+      .replace(/^a variável y\b/, 'a variavel 2'));
+  });
+  dataset.errors = dataset.errors.map(message => String(message)
+    .replace('tempo/ano', 'a variavel 1/tempo')
+    .replace('variÃ¡vel y/desfecho', 'a variavel 2/desfecho')
+    .replace('variável y/desfecho', 'a variavel 2/desfecho'));
+  dataset.warnings = dataset.warnings.map(message => String(message)
+    .replace('tempo ou variÃ¡vel y', 'variavel 1 ou variavel 2')
+    .replace('tempo ou variável y', 'variavel 1 ou variavel 2'));
+  dataset.infos = dataset.infos
+    .filter(message => !String(message).includes('Nenhuma coluna de ID foi reconhecida'))
+    .map(message => String(message)
+      .replace('Tempo identificado:', 'Variavel 1 identificada:')
+      .replace('Variavel Y identificada:', 'Variavel 2 identificada:')
+      .replace('ID identificado:', 'Coluna adicional reconhecida como identificador:')
+      .replace('A variÃ¡vel temporal foi interpretada como', 'A variavel 1 foi interpretada como')
+      .replace('A variável temporal foi interpretada como', 'A variavel 1 foi interpretada como'));
+
   return dataset;
 }
 
@@ -859,6 +881,18 @@ export async function renderTestModule(ctx) {
     results: root.querySelector('#pw-results')
   };
 
+  const pasteSectionNote = root.querySelector('section.surface-card:not(.decorated) .small-note');
+  if (pasteSectionNote) {
+    pasteSectionNote.textContent = 'Cole a tabela com cabecalho na primeira linha. O fluxo principal usa 1a coluna = variavel 1 e 2a coluna = variavel 2; colagem tabulada do Excel continua aceita.';
+  }
+  if (els.paste) {
+    els.paste.placeholder = 'variavel_1;variavel_2\n2015;120,4\n2016;125,8\n2017;130,2';
+  }
+  const runCardNote = root.querySelector('.prais-run-card p');
+  if (runCardNote) {
+    runCardNote.textContent = 'Revise a leitura antes de seguir. A variavel 1 entra como eixo temporal e a variavel 2 como desfecho.';
+  }
+
   const state = {
     dataset: buildEmptyPraisDataset(),
     fileState: null,
@@ -968,7 +1002,10 @@ export async function renderTestModule(ctx) {
   }
 
   function buildDatasetFromPaste() {
-    const fileState = readTabularPasteState(els.paste.value, stats, PRAIS_TABULAR_OPTIONS);
+    let fileState = readTabularPasteState(els.paste.value, stats, PRAIS_TABULAR_OPTIONS);
+    if (fileState.status !== 'loaded') {
+      fileState = readTabularPasteState(els.paste.value, stats, PRAIS_LEGACY_TABULAR_OPTIONS);
+    }
     state.fileState = fileState;
     state.activeSource = 'paste';
     return buildPraisDatasetFromTabularState(fileState, stats, {
@@ -978,7 +1015,10 @@ export async function renderTestModule(ctx) {
   }
 
   async function buildDatasetFromFile(file) {
-    const fileState = await readTabularFileState(file, utils, stats, PRAIS_TABULAR_OPTIONS);
+    let fileState = await readTabularFileState(file, utils, stats, PRAIS_TABULAR_OPTIONS);
+    if (fileState.status !== 'loaded') {
+      fileState = await readTabularFileState(file, utils, stats, PRAIS_LEGACY_TABULAR_OPTIONS);
+    }
     state.fileState = fileState;
     state.activeSource = 'file';
     return buildPraisDatasetFromTabularState(fileState, stats, {
@@ -1091,6 +1131,12 @@ export async function renderTestModule(ctx) {
         ${buildResidualSummaryTable(residualRows, dataset, utils, 6)}
       </article>
     `;
+    els.results.innerHTML = els.results.innerHTML.replace(
+      /<li>ID identificado:[\s\S]*?<\/li>\s*<li>Tempo entendido[\s\S]*?<\/li>\s*<li>Desfecho analisado:[\s\S]*?<\/li>/,
+      `<li>Variavel 1 identificada: ${utils.escapeHtml(dataset.timeHeaderLabel)}.</li>
+          <li>Variavel 2 identificada: ${utils.escapeHtml(dataset.yHeaderLabel)}.</li>
+          <li>Na modelagem, ${utils.escapeHtml(dataset.timeHeaderLabel)} entrou como eixo temporal e ${utils.escapeHtml(dataset.yHeaderLabel)} como desfecho.</li>`
+    );
   }
 
   async function loadExample() {
