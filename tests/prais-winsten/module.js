@@ -881,7 +881,7 @@ export async function renderTestModule(ctx) {
     results: root.querySelector('#pw-results')
   };
 
-  const pasteSectionNote = root.querySelector('section.surface-card:not(.decorated) .small-note');
+  const pasteSectionNote = root.querySelector('#pw-paste')?.closest('section')?.querySelector('.small-note');
   if (pasteSectionNote) {
     pasteSectionNote.textContent = 'Cole a tabela com cabecalho na primeira linha. O fluxo principal usa 1a coluna = variavel 1 e 2a coluna = variavel 2; colagem tabulada do Excel continua aceita.';
   }
