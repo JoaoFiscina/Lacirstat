@@ -7,25 +7,35 @@ import {
   readTabularPasteState
 } from '../../assets/js/tabular-data-input.js';
 
-const PRAIS_FORMAT_LABEL = 'id;tempo;variavel_y;observacao_opcional';
+const PRAIS_FORMAT_LABEL = 'variavel_1;variavel_2';
+const PRAIS_LEGACY_FORMAT_LABEL = 'id;tempo;variavel_y;observacao_opcional';
 const PRAIS_HEADER_ALIASES = {
   id: ['id', 'unidade', 'uf', 'serie', 'série', 'nome', 'local'],
   tempo: ['tempo', 'ano', 'year', 'periodo', 'período', 'x', 'variavel_x', 'variável_x'],
   variavel_y: ['variavel_y', 'variável_y', 'variavel y', 'variável y', 'y', 'taxa', 'valor', 'desfecho'],
   observacao_opcional: ['observacao', 'observação', 'obs', 'comentario', 'comentário']
 };
+PRAIS_HEADER_ALIASES.tempo.push('variavel_1', 'variavel 1', 'variavel1');
+PRAIS_HEADER_ALIASES.variavel_y.push('variavel_2', 'variavel 2', 'variavel2', 'indicador', 'internacoes', 'internaÃ§Ãµes');
 const PRAIS_FIELD_LABELS = {
   id: 'ID',
   tempo: 'Tempo',
   variavel_y: 'Variavel Y',
   observacao_opcional: 'Observacao opcional'
 };
+PRAIS_FIELD_LABELS.tempo = 'Variavel 1';
+PRAIS_FIELD_LABELS.variavel_y = 'Variavel 2';
 const PRAIS_RECOGNIZED_ORDER = [
   { key: 'id', label: PRAIS_FIELD_LABELS.id },
   { key: 'tempo', label: PRAIS_FIELD_LABELS.tempo },
   { key: 'variavel_y', label: PRAIS_FIELD_LABELS.variavel_y },
   { key: 'observacao_opcional', label: PRAIS_FIELD_LABELS.observacao_opcional }
 ];
+PRAIS_RECOGNIZED_ORDER.length = 0;
+PRAIS_RECOGNIZED_ORDER.push(
+  { key: 'tempo', label: PRAIS_FIELD_LABELS.tempo },
+  { key: 'variavel_y', label: PRAIS_FIELD_LABELS.variavel_y }
+);
 const PRAIS_POSITION_FALLBACK = {
   keysByIndex: ['id', 'tempo', 'variavel_y', 'observacao_opcional'],
   minColumns: 3,
@@ -39,6 +49,24 @@ const PRAIS_POSITION_FALLBACK = {
     tempo: (raw, runtimeStats) => parseTemporalValue(raw, runtimeStats).numeric !== null
   }
 };
+PRAIS_POSITION_FALLBACK.keysByIndex = ['tempo', 'variavel_y', 'observacao_opcional'];
+PRAIS_POSITION_FALLBACK.minColumns = 2;
+PRAIS_POSITION_FALLBACK.introText = 'Nao reconhecemos os nomes padrao das colunas. Usamos a estrutura da planilha por posicao: 1a coluna = variavel 1, 2a = variavel 2.';
+PRAIS_POSITION_FALLBACK.minimumColumnsText = 'Esperavamos pelo menos 2 colunas uteis: variavel 1 e variavel 2.';
+PRAIS_POSITION_FALLBACK.consistencyText = 'A primeira linha precisa funcionar como cabecalho, a 1a coluna deve representar tempo/ordem e a 2a coluna precisa conter valores numericos validos.';
+const PRAIS_LEGACY_POSITION_FALLBACK = {
+  keysByIndex: ['id', 'tempo', 'variavel_y', 'observacao_opcional'],
+  minColumns: 3,
+  requiredKeys: ['tempo', 'variavel_y'],
+  introText: 'Nao reconhecemos os nomes padrao das colunas. Aplicamos a compatibilidade legada por posicao: 1a coluna = identificador, 2a = variavel 1 e 3a = variavel 2.',
+  headerText: 'Os nomes reais do cabecalho foram mantidos na interface.',
+  failureMessage: 'Nao conseguimos identificar automaticamente as colunas nem usar a estrutura por posicao.',
+  minimumColumnsText: 'Esperavamos pelo menos 3 colunas uteis para a compatibilidade legada: identificador, variavel 1 e variavel 2.',
+  consistencyText: 'A primeira linha precisa funcionar como cabecalho, a 2a coluna deve representar tempo/ordem e a 3a coluna precisa conter valores numericos validos.',
+  compatibilityValidators: {
+    tempo: (raw, runtimeStats) => parseTemporalValue(raw, runtimeStats).numeric !== null
+  }
+};
 const PRAIS_TABULAR_OPTIONS = {
   aliases: PRAIS_HEADER_ALIASES,
   requiredKeys: ['tempo', 'variavel_y'],
@@ -46,30 +74,45 @@ const PRAIS_TABULAR_OPTIONS = {
   expectedFormatLabel: PRAIS_FORMAT_LABEL,
   positionFallback: PRAIS_POSITION_FALLBACK
 };
+const PRAIS_LEGACY_TABULAR_OPTIONS = {
+  aliases: PRAIS_HEADER_ALIASES,
+  requiredKeys: ['tempo', 'variavel_y'],
+  numericKeys: ['tempo', 'variavel_y'],
+  expectedFormatLabel: PRAIS_LEGACY_FORMAT_LABEL,
+  positionFallback: PRAIS_LEGACY_POSITION_FALLBACK
+};
 const MIN_TEMPORAL_POINTS = 5;
+
+function buildExampleHeaders(config) {
+  const headers = Array.isArray(config?.exampleHeaders) ? config.exampleHeaders : [];
+  return [
+    String(headers[0] || 'variavel_1'),
+    String(headers[1] || 'variavel_2')
+  ];
+}
 
 function buildExampleRows(config) {
   const rows = Array.isArray(config?.exampleRows) ? config.exampleRows : [];
   if (!rows.length) {
     return [
-      ['Brasil', '2015', '123,4', ''],
-      ['Brasil', '2016', '130,2', ''],
-      ['Brasil', '2017', '128,9', '']
+      ['2015', '120,4'],
+      ['2016', '125,8'],
+      ['2017', '130,2']
     ];
   }
 
   return rows.map(row => {
     const tempo = row?.[0] ?? '';
     const valor = row?.[1] ?? '';
-    const obs = row?.[2] ?? '';
-    return ['Brasil', String(tempo), String(valor), String(obs)];
+    return [String(tempo), String(valor)];
   });
 }
 
 function buildExampleText(config) {
+  const headers = buildExampleHeaders(config);
   const rows = buildExampleRows(config);
   return [
-    PRAIS_FORMAT_LABEL,
+    headers.join(';'),
     ...rows.map(row => row.join(';'))
   ].join('\n');
 }
@@ -96,22 +139,20 @@ function formatDetectedColumnMessage(label, value, utils) {
 
 function buildDetectedColumnsCallout(dataset, utils) {
   const hasDetectedColumns = Boolean(
-    dataset.recognizedColumns?.id
-    || dataset.recognizedColumns?.tempo
+    dataset.recognizedColumns?.tempo
     || dataset.recognizedColumns?.variavel_y
   );
   if (!hasDetectedColumns && !dataset.usedPositionalFallback) return '';
 
   const details = [
-    formatDetectedColumnMessage('ID identificado', dataset.idHeaderLabel, utils),
-    formatDetectedColumnMessage('Tempo identificado', dataset.timeHeaderLabel, utils),
-    formatDetectedColumnMessage('Variavel Y identificada', dataset.yHeaderLabel, utils)
+    formatDetectedColumnMessage('Variavel 1 identificada', dataset.timeHeaderLabel, utils),
+    formatDetectedColumnMessage('Variavel 2 identificada', dataset.yHeaderLabel, utils)
   ];
 
   if (dataset.usedPositionalFallback) {
     return `
       <div class="success-box">
-        <strong>Nao reconhecemos os nomes padrao das colunas. Usamos a estrutura da planilha por posicao: 1a coluna = ID, 2a = tempo, 3a = variavel Y.</strong>
+        <strong>${utils.escapeHtml(dataset.recognitionDetails?.[0] || 'Nao reconhecemos os nomes padrao das colunas. Usamos a estrutura da planilha por posicao: 1a coluna = variavel 1, 2a = variavel 2.')}</strong>
         <div class="small-note" style="margin-top:8px;">${details.join(' &middot; ')}</div>
       </div>
     `;
@@ -479,7 +520,6 @@ function buildPraisDatasetFromTabularState(fileState, stats, sourceMeta = {}) {
 
 function buildPraisPreviewTable(dataset, utils, limit = 14) {
   const rows = dataset.rows.slice(0, limit);
-  const idHeader = dataset.previewHeaders?.id || 'id';
   const timeHeader = dataset.previewHeaders?.tempo || 'tempo';
   const yHeader = dataset.previewHeaders?.y || 'variavel_y';
 
@@ -488,7 +528,6 @@ function buildPraisPreviewTable(dataset, utils, limit = 14) {
       <table class="preview-table prais-preview-table">
         <thead>
           <tr>
-            <th>${utils.escapeHtml(idHeader)} bruto</th>
             <th>${utils.escapeHtml(timeHeader)} bruto</th>
             <th>${utils.escapeHtml(yHeader)} bruto</th>
             <th>${utils.escapeHtml(timeHeader)} convertido</th>
@@ -499,7 +538,6 @@ function buildPraisPreviewTable(dataset, utils, limit = 14) {
         <tbody>
           ${rows.length ? rows.map(row => `
             <tr class="${row.statusTone === 'ignored' ? 'prais-preview-row-ignored' : 'prais-preview-row-valid'}">
-              <td>${utils.escapeHtml(row.idLabel)}</td>
               <td>${utils.escapeHtml(row.timeRaw || '-')}</td>
               <td>${utils.escapeHtml(row.yRaw || '-')}</td>
               <td>${formatConvertedTime(row.timeValue, utils)}</td>
@@ -511,7 +549,7 @@ function buildPraisPreviewTable(dataset, utils, limit = 14) {
                 </div>
               </td>
             </tr>
-          `).join('') : '<tr><td colspan="6">Nenhum dado interpretado ainda.</td></tr>'}
+          `).join('') : '<tr><td colspan="5">Nenhum dado interpretado ainda.</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -525,7 +563,6 @@ function buildDerivedSeriesTable(dataset, utils, limit = 14) {
   }
 
   const rows = dataset.orderedRows.slice(0, limit).map(row => [
-    row.idLabel,
     row.timeLabel,
     formatConvertedY(row.yValue, utils)
   ]);
@@ -534,11 +571,12 @@ function buildDerivedSeriesTable(dataset, utils, limit = 14) {
     <div class="small-note" style="margin-bottom:10px;">
       Série pronta para análise em ordem temporal${dataset.reordered ? ' (reordenada automaticamente)' : ''}.
     </div>
-    ${utils.renderPreviewTable([dataset.idHeaderLabel, dataset.timeHeaderLabel, dataset.yHeaderLabel], rows, limit)}
+    ${utils.renderPreviewTable([dataset.timeHeaderLabel, dataset.yHeaderLabel], rows, limit)}
   `;
 }
 
 function buildFormatPreview(config, utils) {
+  const exampleHeaders = buildExampleHeaders(config);
   const exampleRows = buildExampleRows(config).slice(0, 4);
   return `
     <div class="prais-format-box">
@@ -547,10 +585,8 @@ function buildFormatPreview(config, utils) {
         <table class="preview-table">
           <thead>
             <tr>
-              <th>id</th>
-              <th>tempo</th>
-              <th>variavel_y</th>
-              <th>observacao_opcional</th>
+              <th>${utils.escapeHtml(exampleHeaders[0])}</th>
+              <th>${utils.escapeHtml(exampleHeaders[1])}</th>
             </tr>
           </thead>
           <tbody>
@@ -673,7 +709,6 @@ function buildResidualSummaryTable(rows, dataset, utils, limit = 6) {
       <table class="preview-table prais-preview-table">
         <thead>
           <tr>
-            <th>${utils.escapeHtml(dataset.idHeaderLabel)}</th>
             <th>${utils.escapeHtml(dataset.timeHeaderLabel)}</th>
             <th>${utils.escapeHtml(dataset.yHeaderLabel)} observado</th>
             <th>${utils.escapeHtml(dataset.yHeaderLabel)} ajustado</th>
@@ -683,7 +718,6 @@ function buildResidualSummaryTable(rows, dataset, utils, limit = 6) {
         <tbody>
           ${ranked.map(row => `
             <tr>
-              <td>${utils.escapeHtml(row.idLabel)}</td>
               <td>${utils.escapeHtml(row.timeLabel)}</td>
               <td>${formatConvertedY(row.observed, utils)}</td>
               <td>${formatConvertedY(row.fitted, utils)}</td>
@@ -733,7 +767,7 @@ export async function renderTestModule(ctx) {
         <p class="small-note">Este é o único bloco de upload do módulo. Aceitamos CSV, TXT, TSV e XLSX; primeiro tentamos aliases e, se necessário, usamos fallback por posição com cabeçalho.</p>
         <article class="mini-card prais-step-card" style="margin-top:16px;">
           <div class="small-chip info">Importar arquivo</div>
-          <p>Formato recomendado: <strong>${utils.escapeHtml(PRAIS_FORMAT_LABEL)}</strong>. Exemplo de fallback aceito: <strong>UF;Ano;Internacoes</strong>.</p>
+          <p>Formato recomendado: <strong>${utils.escapeHtml(PRAIS_FORMAT_LABEL)}</strong>. Exemplo: <strong>Ano;Internacoes</strong>. Arquivos antigos com coluna extra de identificacao continuam aceitos por compatibilidade.</p>
           <input id="pw-file" type="file" accept=".csv,.txt,.tsv,.xlsx" hidden />
           <div class="actions-row" style="margin-top:12px;">
             <button id="pw-import" type="button" class="btn-secondary">Importar arquivo</button>
