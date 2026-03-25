@@ -740,6 +740,22 @@ function metricCard(label, value, note = '') {
   `;
 }
 
+function buildPreviewMetaCardsHtml({ sourceText, variable1Label, variable2Label, validCount, periodLabel = '', orderingText = '', hasContent }) {
+  const cards = [
+    `<article class="mini-card"><h4>Fonte</h4><p>${sourceText}</p></article>`,
+    `<article class="mini-card"><h4>Variavel 1 identificada</h4><p>${variable1Label}</p></article>`,
+    `<article class="mini-card"><h4>Variavel 2 identificada</h4><p>${variable2Label}</p></article>`,
+    `<article class="mini-card"><h4>Linhas validas</h4><p>${validCount}</p></article>`
+  ];
+
+  if (hasContent) {
+    cards.push(`<article class="mini-card"><h4>Periodo</h4><p>${periodLabel}</p></article>`);
+    cards.push(`<article class="mini-card"><h4>Serie ordenada</h4><p>${orderingText}</p></article>`);
+  }
+
+  return cards.join('');
+}
+
 export async function renderTestModule(ctx) {
   const { root, config, utils, stats } = ctx;
   const exampleText = buildExampleText(config);
@@ -898,6 +914,13 @@ export async function renderTestModule(ctx) {
         <article class="mini-card"><h4>Variável Y identificada</h4><p>Aguardando leitura</p></article>
         <article class="mini-card"><h4>Linhas válidas</h4><p>0</p></article>
       `;
+      els.previewMeta.innerHTML = buildPreviewMetaCardsHtml({
+        sourceText: 'Nenhum conteudo lido',
+        variable1Label: 'Aguardando leitura',
+        variable2Label: 'Aguardando leitura',
+        validCount: '0',
+        hasContent: false
+      });
       els.previewMessages.innerHTML = buildFeedbackBox(
         dataset.errors.length ? dataset.errors : ['Cole dados, importe um arquivo ou use o exemplo para montar a prévia.'],
         dataset.errors.length ? 'error-box' : 'status-bar',
@@ -922,6 +945,15 @@ export async function renderTestModule(ctx) {
       <article class="mini-card"><h4>Série ordenada</h4><p>${utils.escapeHtml(orderingText)}</p></article>
     `;
 
+    els.previewMeta.innerHTML = buildPreviewMetaCardsHtml({
+      sourceText: utils.escapeHtml(sourceText),
+      variable1Label: utils.escapeHtml(dataset.timeHeaderLabel || 'Nao identificado'),
+      variable2Label: utils.escapeHtml(dataset.yHeaderLabel || 'Nao identificado'),
+      validCount: String(dataset.validCount),
+      periodLabel: utils.escapeHtml(dataset.periodLabel || 'Ainda nao definido'),
+      orderingText: utils.escapeHtml(orderingText),
+      hasContent: true
+    });
     els.previewMessages.innerHTML = [
       buildDetectedColumnsCallout(dataset, utils),
       recognizedChips ? `<div class="prais-chip-row">${recognizedChips}</div>` : '',
