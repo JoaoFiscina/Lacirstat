@@ -8,6 +8,11 @@ const sharedState = window.__LACIR_SHARED__ || (window.__LACIR_SHARED__ = {
     lastSession: null
   }
 });
+const appScriptEl = document.currentScript
+  || document.querySelector('script[src$="/assets/js/app.js"], script[src$="assets/js/app.js"]');
+const appScriptUrl = new URL(appScriptEl?.src || './assets/js/app.js', document.baseURI);
+const siteRootUrl = new URL('../../', appScriptUrl);
+const manifestUrl = new URL('./tests-manifest.json', siteRootUrl);
 
 const utils = {
   clearElement(el) {
@@ -503,6 +508,11 @@ function normalizeBasePath(path) {
   return path.endsWith('/') ? path : `${path}/`;
 }
 
+function resolveTestBaseUrl(path) {
+  const normalizedPath = normalizeBasePath(String(path || '').trim()).replace(/^\/+/, '');
+  return new URL(normalizedPath, manifestUrl);
+}
+
 function setHeader(title, subtitle, note = '') {
   pageTitle.textContent = title || 'Teste';
   pageSubtitle.textContent = subtitle || '';
@@ -536,9 +546,9 @@ async function loadTest(testItem, manifest) {
     setActiveNav(testItem.id);
     moduleRoot.innerHTML = `<div class="info-banner">Carregando <strong>${utils.escapeHtml(testItem.title)}</strong>...</div>`;
 
-    const basePath = normalizeBasePath(testItem.path);
-    const configUrl = new URL(`${basePath}config.json`, document.baseURI).href;
-    const moduleUrl = new URL(`${basePath}module.js`, document.baseURI).href;
+    const testBaseUrl = resolveTestBaseUrl(testItem.path);
+    const configUrl = new URL('./config.json', testBaseUrl).href;
+    const moduleUrl = new URL('./module.js', testBaseUrl).href;
     const config = await fetchJson(configUrl);
     const module = await import(moduleUrl);
 
@@ -577,7 +587,7 @@ async function bootstrap() {
     }
 
     utils.showLoading(navEl, 'Carregando testes...');
-    const manifest = await fetchJson(new URL('./tests-manifest.json', document.baseURI).href);
+    const manifest = await fetchJson(manifestUrl.href);
 
     if (!Array.isArray(manifest) || !manifest.length) {
       throw new Error('Nenhum teste encontrado no manifesto.');
