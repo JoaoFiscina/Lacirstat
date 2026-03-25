@@ -13,6 +13,14 @@ const appScriptEl = document.currentScript
 const appScriptUrl = new URL(appScriptEl?.src || './assets/js/app.js', document.baseURI);
 const siteRootUrl = new URL('../../', appScriptUrl);
 const manifestUrl = new URL('./tests-manifest.json', siteRootUrl);
+const moduleLoaderState = {
+  manifest: [],
+  registry: new Map(),
+  loadSequence: 0,
+  activeLoadId: 0,
+  activeModuleId: null,
+  activeController: null
+};
 
 const utils = {
   clearElement(el) {
@@ -497,8 +505,20 @@ const Stats = {
   }
 };
 
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: 'no-store' });
+function logLoaderEvent(level, message, detail) {
+  const consoleMethod = typeof console[level] === 'function' ? level : 'log';
+  if (detail === undefined) {
+    console[consoleMethod](`[loader] ${message}`);
+    return;
+  }
+  console[consoleMethod](`[loader] ${message}`, detail);
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, {
+    cache: 'no-store',
+    signal: options.signal
+  });
   if (!response.ok) throw new Error(`Falha ao carregar ${url} (${response.status})`);
   const source = await response.text();
   return JSON.parse(utils.normalizeImportedText(source));
@@ -508,9 +528,166 @@ function normalizeBasePath(path) {
   return path.endsWith('/') ? path : `${path}/`;
 }
 
-function resolveTestBaseUrl(path) {
-  const normalizedPath = normalizeBasePath(String(path || '').trim()).replace(/^\/+/, '');
-  return new URL(normalizedPath, manifestUrl);
+function normalizeManifestPath(path) {
+  return normalizeBasePath(String(path || '').trim()).replace(/^\/+/, '');
+}
+
+function createRegisteredTest(testItem, index) {
+  const id = String(testItem?.id || '').trim();
+  if (!id) throw new Error(`Item do manifesto sem id na posicao ${index + 1}.`);
+
+  const path = normalizeManifestPath(testItem.path);
+  if (!path) throw new Error(`O modulo ${id} nao possui path configurado no manifesto.`);
+
+  const baseUrl = new URL(path, manifestUrl);
+  return {
+    ...testItem,
+    id,
+    path,
+    baseUrl: baseUrl.href,
+    configUrl: new URL('./config.json', baseUrl).href,
+    moduleUrl: new URL('./module.js', baseUrl).href
+  };
+}
+
+function registerModules(manifest) {
+  const registry = new Map();
+  const normalizedManifest = manifest.map(createRegisteredTest);
+
+  normalizedManifest.forEach(testItem => {
+    if (registry.has(testItem.id)) {
+      throw new Error(`O manifesto declarou o modulo ${testItem.id} mais de uma vez.`);
+    }
+    registry.set(testItem.id, testItem);
+  });
+
+  moduleLoaderState.manifest = normalizedManifest;
+  moduleLoaderState.registry = registry;
+
+  logLoaderEvent('info', 'Registro canonico de modulos carregado', {
+    siteRootUrl: siteRootUrl.href,
+    moduleIds: normalizedManifest.map(testItem => testItem.id)
+  });
+
+  return normalizedManifest;
+}
+
+function getRegisteredTest(testId) {
+  const testItem = moduleLoaderState.registry.get(testId);
+  if (!testItem) {
+    throw new Error(`O modulo ${testId} nao esta registrado no manifesto.`);
+  }
+  return testItem;
+}
+
+function isLikelyJavaScriptContentType(contentType) {
+  if (!contentType) return true;
+  return /\b(?:application|text)\/(?:javascript|ecmascript|x-javascript)\b/i.test(contentType);
+}
+
+function looksLikeHtmlDocument(source) {
+  return /^\s*(?:<!doctype html|<html\b)/i.test(String(source || ''));
+}
+
+function hashText(source) {
+  let hash = 2166136261;
+  const text = String(source || '');
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(36);
+}
+
+function buildAssetRevisionToken(response, source) {
+  return response.headers.get('etag')
+    || response.headers.get('last-modified')
+    || `${source.length}-${hashText(source)}`;
+}
+
+function buildVersionedAssetUrl(assetUrl, revisionToken) {
+  const url = new URL(assetUrl);
+  if (revisionToken) {
+    url.searchParams.set('v', revisionToken);
+  }
+  return url.href;
+}
+
+async function prevalidateModuleAsset(testItem, options = {}) {
+  const response = await fetch(testItem.moduleUrl, {
+    cache: 'no-store',
+    signal: options.signal
+  });
+  const contentType = response.headers.get('content-type') || '';
+  const source = utils.normalizeImportedText(await response.text());
+  const baseDetails = {
+    moduleId: testItem.id,
+    moduleUrl: testItem.moduleUrl,
+    status: response.status,
+    contentType: contentType || '(desconhecido)'
+  };
+
+  if (!response.ok) {
+    throw new Error(`Falha ao carregar ${testItem.moduleUrl} (${response.status})`);
+  }
+
+  if (looksLikeHtmlDocument(source)) {
+    throw new Error(`O asset do modulo ${testItem.id} retornou HTML em vez de JavaScript.`);
+  }
+
+  if (!isLikelyJavaScriptContentType(contentType)) {
+    throw new Error(`O asset do modulo ${testItem.id} retornou content-type incompativel (${contentType || 'desconhecido'}).`);
+  }
+
+  const revisionToken = buildAssetRevisionToken(response, source);
+  const importUrl = buildVersionedAssetUrl(testItem.moduleUrl, revisionToken);
+  const validation = {
+    ...baseDetails,
+    revisionToken,
+    importUrl
+  };
+
+  logLoaderEvent('info', `Pre-validacao do modulo ${testItem.id} concluida`, validation);
+  return validation;
+}
+
+function beginModuleLoad(testItem) {
+  const loadId = moduleLoaderState.loadSequence + 1;
+  moduleLoaderState.loadSequence = loadId;
+  moduleLoaderState.activeLoadId = loadId;
+  moduleLoaderState.activeModuleId = testItem.id;
+  moduleLoaderState.activeController?.abort();
+
+  const controller = new AbortController();
+  moduleLoaderState.activeController = controller;
+  return { loadId, controller };
+}
+
+function isStaleLoad(loadId) {
+  return loadId !== moduleLoaderState.activeLoadId;
+}
+
+function discardStaleLoad(loadId, testItem, stage, error = null) {
+  if (!isStaleLoad(loadId) && error?.name !== 'AbortError') {
+    return false;
+  }
+
+  logLoaderEvent('info', `Carga obsoleta descartada para ${testItem.id}`, {
+    stage,
+    loadId,
+    requestedModule: testItem.id,
+    activeLoadId: moduleLoaderState.activeLoadId,
+    activeModuleId: moduleLoaderState.activeModuleId,
+    errorName: error?.name || null
+  });
+  return true;
+}
+
+function finalizeModuleLoad(loadId) {
+  if (moduleLoaderState.activeLoadId !== loadId) return;
+  moduleLoaderState.activeController = null;
 }
 
 function setHeader(title, subtitle, note = '') {
@@ -536,21 +713,52 @@ function renderNav(manifest) {
       <span class="test-link-title">${utils.escapeHtml(item.title)}</span>
       <span class="test-link-subtitle">${utils.escapeHtml(item.subtitle || '')}</span>
     `;
-    button.addEventListener('click', () => loadTest(item, manifest));
+    button.addEventListener('click', () => loadTest(item.id));
     navEl.appendChild(button);
   });
 }
 
-async function loadTest(testItem, manifest) {
+async function loadTest(testRef) {
+  const testId = typeof testRef === 'string' ? testRef : testRef?.id;
+  const testItem = getRegisteredTest(testId);
+  const { loadId, controller } = beginModuleLoad(testItem);
+
   try {
+    logLoaderEvent('info', `Solicitando modulo ${testItem.id}`, {
+      loadId,
+      configUrl: testItem.configUrl,
+      moduleUrl: testItem.moduleUrl
+    });
     setActiveNav(testItem.id);
     moduleRoot.innerHTML = `<div class="info-banner">Carregando <strong>${utils.escapeHtml(testItem.title)}</strong>...</div>`;
 
-    const testBaseUrl = resolveTestBaseUrl(testItem.path);
-    const configUrl = new URL('./config.json', testBaseUrl).href;
-    const moduleUrl = new URL('./module.js', testBaseUrl).href;
-    const config = await fetchJson(configUrl);
-    const module = await import(moduleUrl);
+    const [config, assetValidation] = await Promise.all([
+      fetchJson(testItem.configUrl, { signal: controller.signal }),
+      prevalidateModuleAsset(testItem, { signal: controller.signal })
+    ]);
+
+    if (discardStaleLoad(loadId, testItem, 'before-import')) return;
+
+    logLoaderEvent('info', `Importando modulo ${testItem.id}`, {
+      loadId,
+      canonicalUrl: testItem.moduleUrl,
+      importUrl: assetValidation.importUrl
+    });
+
+    let module;
+    try {
+      module = await import(assetValidation.importUrl);
+    } catch (error) {
+      logLoaderEvent('error', `Falha no import() do modulo ${testItem.id}`, {
+        loadId,
+        canonicalUrl: testItem.moduleUrl,
+        importUrl: assetValidation.importUrl,
+        error
+      });
+      throw error;
+    }
+
+    if (discardStaleLoad(loadId, testItem, 'after-import')) return;
 
     setHeader(
       config.title || testItem.title,
@@ -566,15 +774,32 @@ async function loadTest(testItem, manifest) {
     await module.renderTestModule({
       root: moduleRoot,
       config,
-      manifest,
+      manifest: moduleLoaderState.manifest,
       currentTest: testItem,
       utils,
       stats: Stats,
       shared: sharedState
     });
+
+    if (discardStaleLoad(loadId, testItem, 'after-render')) return;
+
+    logLoaderEvent('info', `Modulo ${testItem.id} carregado com sucesso`, {
+      loadId,
+      importUrl: assetValidation.importUrl
+    });
   } catch (error) {
+    if (discardStaleLoad(loadId, testItem, 'error', error)) return;
+
+    logLoaderEvent('error', `Erro ao carregar o modulo ${testItem.id}`, {
+      loadId,
+      configUrl: testItem.configUrl,
+      moduleUrl: testItem.moduleUrl,
+      error
+    });
     console.error(error);
     utils.showError(moduleRoot, error.message || 'Erro desconhecido ao carregar o teste.');
+  } finally {
+    finalizeModuleLoad(loadId);
   }
 }
 
@@ -587,14 +812,14 @@ async function bootstrap() {
     }
 
     utils.showLoading(navEl, 'Carregando testes...');
-    const manifest = await fetchJson(manifestUrl.href);
+    const manifest = registerModules(await fetchJson(manifestUrl.href));
 
     if (!Array.isArray(manifest) || !manifest.length) {
       throw new Error('Nenhum teste encontrado no manifesto.');
     }
 
     renderNav(manifest);
-    await loadTest(manifest[0], manifest);
+    await loadTest(manifest[0].id);
   } catch (error) {
     console.error(error);
     utils.showError(navEl, error.message || 'Não foi possível carregar os testes.');
