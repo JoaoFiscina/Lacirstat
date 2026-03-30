@@ -1,0 +1,79 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [3 0 R] >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 4232 >>
+stream
+0.20 0.33 0.54 rg
+BT /F2 18 Tf 1 0 0 1 42 806 Tm (Lacirstat App Summary) Tj ET
+0.65 G 42 782 m 553 782 l S
+0 g
+BT /F2 11.5 Tf 1 0 0 1 42 770 Tm (What it is) Tj ET
+BT /F1 9.8 Tf 1 0 0 1 42 756 Tm (Static, browser-based biostatistics toolkit for LACIR training. It loads statistical tests as) Tj ET
+BT /F1 9.8 Tf 1 0 0 1 42 744.5 Tm (independent front-end modules and helps users analyze spreadsheet-style or DATASUS-derived data) Tj ET
+BT /F1 9.8 Tf 1 0 0 1 42 733 Tm (with guided interpretation.) Tj ET
+BT /F2 11.5 Tf 1 0 0 1 42 713.5 Tm (Who it's for) Tj ET
+BT /F1 9.8 Tf 1 0 0 1 42 699.5 Tm (Primary persona: LACIR researchers, trainees, or health-study analysts who need a didactic) Tj ET
+BT /F1 9.8 Tf 1 0 0 1 42 688 Tm (interface to run common statistical tests from spreadsheets, Excel pastes, or DATASUS exports) Tj ET
+BT /F1 9.8 Tf 1 0 0 1 42 676.5 Tm (without a backend setup.) Tj ET
+BT /F2 11.5 Tf 1 0 0 1 42 657 Tm (What it does) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 643 Tm (- Manifest-driven menu loads three test modules: Student's t, Pearson/Spearman correlation,) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 632.2 Tm (and Prais-Winsten trend analysis.) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 621.4 Tm (- Accepts local tabular inputs including pasted Excel ranges, delimited text, and parser) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 610.6 Tm (support for workbook tables in XLSX.) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 599.8 Tm (- Normalizes PT-BR numeric formats, decimal commas, delimiter/header patterns, and suspected) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 589 Tm (mojibake/encoding issues.) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 578.2 Tm (- Provides empty/example templates and guided entry flows for supported analyses.) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 567.4 Tm (- Includes a DATASUS import/normalization wizard and reuses the last confirmed DATASUS) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 556.6 Tm (session across modules.) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 545.8 Tm (- Runs calculations in the browser and renders previews, metrics, confidence intervals,) Tj ET
+BT /F1 9.6 Tf 1 0 0 1 52 535 Tm (classifications, and interpretation cards.) Tj ET
+BT /F2 11.5 Tf 1 0 0 1 42 518.200000000001 Tm (How it works) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 504.200000000001 Tm (- UI shell: index.html loads assets/css/styles.css and assets/js/app.js.) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 493.800000000001 Tm (- Loader flow: app.js fetches tests-manifest.json, builds navigation, fetches each module) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 483.400000000001 Tm (config.json, validates module.js, and dynamic-imports the selected module.) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 473.000000000001 Tm (- Shared logic: app.js supplies browser-side utils, statistical functions, and shared) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 462.600000000001 Tm (DATASUS session state on window.__LACIR_SHARED__.) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 452.200000000001 Tm (- Data helpers: tabular-data-input.js parses delimited text/XLSX; datasus-importer.js,) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 441.800000000001 Tm (datasus-normalizer.js, and datasus-wizard.js prepare DATASUS data.) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 431.400000000001 Tm (- Feature modules live under tests/t-student, tests/correlacao, and tests/prais-winsten,) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 421.000000000001 Tm (each with local config and module code.) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 410.600000000001 Tm (- Backend/services/API endpoints: Not found in repo.) Tj ET
+BT /F2 11.5 Tf 1 0 0 1 42 394.200000000001 Tm (How to run) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 380.200000000001 Tm (- Serve the repo over HTTP/HTTPS; app.js blocks direct file:// loading and suggests GitHub) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 369.800000000001 Tm (Pages or a simple local server.) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 359.400000000001 Tm (- Open the served index.html page in a browser.) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 349.000000000001 Tm (- Pick a test from the left nav; the app then loads its local config.json and module.js) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 338.600000000001 Tm (files.) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 328.200000000001 Tm (- Upload, paste, or sample-load data and run the analysis.) Tj ET
+BT /F1 9.4 Tf 1 0 0 1 52 317.800000000001 Tm (- Exact local start command or package script: Not found in repo.) Tj ET
+
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000000285 00000 n 
+0000004517 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+4680
+%%EOF
